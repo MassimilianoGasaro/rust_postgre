@@ -37,3 +37,6 @@ $RECYCLE.BIN/
 
 # NFS temporary files
 .nfs*
+
+# variabili ambiente
+.env
