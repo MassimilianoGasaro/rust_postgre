@@ -27,4 +27,26 @@ pub struct User {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Mappa la tabella `users_info` nel database.
+/// Relazione 1-a-1 con `users`: ogni utente ha esattamente un profilo.
+/// `user_id` è sia PRIMARY KEY che FOREIGN KEY → non possono esistere righe orfane.
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct UserInfo {
+    pub id: i64,
+    /// FK → users.id (1-a-1)
+    pub user_id: i64,
+    pub bio: String,
+}
+
+/// Mappa la tabella `users_config` nel database.
+/// Relazione 1-a-1 con `users`: ogni utente ha esattamente una configurazione.
+/// `user_id` è sia PRIMARY KEY che FOREIGN KEY → non possono esistere righe orfane.
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct UserConfig {
+    pub id: i64,
+    /// FK → users.id (1-a-1)
+    pub user_id: i64,
+    pub can_edit: bool,
+}
+
 
