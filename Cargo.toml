@@ -6,6 +6,10 @@ edition = "2024"
 [dependencies]
 # Web framework
 axum = { version = "0.7", features = ["macros"] }
+axum-server = { version = "0.7", features = ["tls-rustls"] }
+
+# Generazione certificati self-signed (solo sviluppo)
+rcgen = "0.13"
 
 # Database
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio", "macros", "uuid", "chrono"] }
@@ -37,4 +41,5 @@ thiserror = "1"
 
 # Logging
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"

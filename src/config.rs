@@ -15,6 +15,10 @@ pub struct Config {
     pub jwt_expiration_hours: i64,
     pub server_host: String,
     pub server_port: u16,
+    /// Percorso del certificato TLS (PEM). Se assente, si usa un certificato self-signed.
+    pub tls_cert_path: Option<String>,
+    /// Percorso della chiave privata TLS (PEM). Se assente, si usa una chiave self-signed.
+    pub tls_key_path: Option<String>,
 }
 
 impl Config {
@@ -40,6 +44,9 @@ impl Config {
                 .unwrap_or_else(|_| "3000".to_string())
                 .parse()
                 .expect("SERVER_PORT deve essere un numero"),
+
+            tls_cert_path: std::env::var("TLS_CERT_PATH").ok(),
+            tls_key_path: std::env::var("TLS_KEY_PATH").ok(),
         }
     }
 
