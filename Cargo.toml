@@ -12,7 +12,7 @@ axum-server = { version = "0.7", features = ["tls-rustls"] }
 rcgen = "0.13"
 
 # Database
-sqlx = { version = "0.8", features = ["postgres", "runtime-tokio", "macros", "uuid", "chrono"] }
+sqlx = { version = "0.8", features = ["postgres", "runtime-tokio", "macros", "chrono"] }
 
 # Runtime asincrono
 tokio = { version = "1", features = ["full"] }
@@ -29,9 +29,6 @@ jsonwebtoken = "9"
 
 # Hash delle password
 bcrypt = "0.15"
-
-# UUID
-uuid = { version = "1", features = ["v4", "serde"] }
 
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }

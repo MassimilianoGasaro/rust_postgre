@@ -14,7 +14,6 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use uuid::Uuid;
 
 use crate::dto::auth::Claims;
 use crate::dto::user::{PaginationQuery, UpdateUserRequest};
@@ -43,7 +42,7 @@ pub async fn list(
 pub async fn get_by_id(
     State(state): State<AppState>,
     Extension(_claims): Extension<Claims>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<i64>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let user = user_service::get_user_by_id(&state.pool, id).await?;
     Ok(Json(serde_json::json!(user)))
@@ -57,15 +56,12 @@ pub async fn get_by_id(
 pub async fn update(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<i64>,
     Json(req): Json<UpdateUserRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     // Opzionale: verifica che l'utente stia modificando solo sé stesso
     // (rimuovi questo check se gli admin devono poter modificare tutti)
-    let caller_id = Uuid::parse_str(&claims.sub)
-        .map_err(|_| AppError::Unauthorized("Token non valido".to_string()))?;
-
-    if caller_id != id {
+    if claims.sub != id {
         return Err(AppError::Unauthorized(
             "Non puoi modificare un altro utente".to_string(),
         ));
@@ -81,13 +77,10 @@ pub async fn update(
 pub async fn delete(
     State(state): State<AppState>,
     Extension(claims): Extension<Claims>,
-    Path(id): Path<Uuid>,
+    Path(id): Path<i64>,
 ) -> Result<StatusCode, AppError> {
     // Anche qui: solo l'utente stesso può eliminarsi
-    let caller_id = Uuid::parse_str(&claims.sub)
-        .map_err(|_| AppError::Unauthorized("Token non valido".to_string()))?;
-
-    if caller_id != id {
+    if claims.sub != id {
         return Err(AppError::Unauthorized(
             "Non puoi eliminare un altro utente".to_string(),
         ));

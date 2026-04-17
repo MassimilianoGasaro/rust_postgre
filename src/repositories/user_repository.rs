@@ -8,7 +8,6 @@
 /// quando usi la macro `sqlx::query_as!` — errori SQL = errori di compilazione.
 
 use sqlx::PgPool;
-use uuid::Uuid;
 
 use crate::errors::AppError;
 use crate::models::user::User;
@@ -35,7 +34,7 @@ pub async fn find_by_email(pool: &PgPool, email: &str) -> Result<Option<User>, A
 
 /// Cerca un utente per ID. Ritorna None se non esiste.
 /// Usato per GET /users/:id e per la validazione del JWT.
-pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<User>, AppError> {
+pub async fn find_by_id(pool: &PgPool, id: i64) -> Result<Option<User>, AppError> {
     let user = sqlx::query_as!(
         User,
         r#"
@@ -63,8 +62,8 @@ pub async fn create(
     let user = sqlx::query_as!(
         User,
         r#"
-        INSERT INTO users (id, email, username, password_hash, is_active, created_at, updated_at)
-        VALUES (gen_random_uuid(), $1, $2, $3, true, NOW(), NOW())
+        INSERT INTO users (email, username, password_hash, is_active, created_at, updated_at)
+        VALUES ($1, $2, $3, true, NOW(), NOW())
         RETURNING id, email, username, password_hash, is_active, created_at, updated_at
         "#,
         email,
@@ -112,7 +111,7 @@ pub async fn count(pool: &PgPool) -> Result<i64, AppError> {
 /// Ritorna l'utente aggiornato.
 pub async fn update(
     pool: &PgPool,
-    id: Uuid,
+    id: i64,
     email: Option<&str>,
     username: Option<&str>,
     password_hash: Option<&str>,
@@ -148,7 +147,7 @@ pub async fn update(
 
 /// Elimina un utente per ID.
 /// Ritorna il numero di righe eliminate (0 se non esiste).
-pub async fn delete(pool: &PgPool, id: Uuid) -> Result<u64, AppError> {
+pub async fn delete(pool: &PgPool, id: i64) -> Result<u64, AppError> {
     let result: sqlx::postgres::PgQueryResult = sqlx::query!("DELETE FROM users WHERE id = $1", id)
         .execute(pool)
         .await?;

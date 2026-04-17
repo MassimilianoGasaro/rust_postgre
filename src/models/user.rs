@@ -7,14 +7,13 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 /// Mappa la tabella `users` nel database.
 /// `#[derive(sqlx::FromRow)]` permette a sqlx di costruire questo struct
 /// automaticamente dai risultati delle query.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct User {
-    pub id: Uuid,
+    pub id: i64,
     pub email: String,
     pub username: String,
 
@@ -27,3 +26,5 @@ pub struct User {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
+
+

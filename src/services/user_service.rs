@@ -9,7 +9,6 @@
 /// Il repository esegue solo SQL, il controller gestisce solo HTTP.
 
 use sqlx::PgPool;
-use uuid::Uuid;
 
 use crate::dto::user::{PaginationQuery, UpdateUserRequest, UserListResponse, UserResponse};
 use crate::errors::AppError;
@@ -58,7 +57,7 @@ pub async fn get_all_users(
 
 /// Recupera un singolo utente per ID.
 /// Restituisce 404 se non esiste.
-pub async fn get_user_by_id(pool: &PgPool, id: Uuid) -> Result<UserResponse, AppError> {
+pub async fn get_user_by_id(pool: &PgPool, id: i64) -> Result<UserResponse, AppError> {
     let user = user_repository::find_by_id(pool, id)
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Utente con id '{}' non trovato", id)))?;
@@ -75,7 +74,7 @@ pub async fn get_user_by_id(pool: &PgPool, id: Uuid) -> Result<UserResponse, App
 /// 4. Aggiorna via repository
 pub async fn update_user(
     pool: &PgPool,
-    id: Uuid,
+    id: i64,
     req: UpdateUserRequest,
 ) -> Result<UserResponse, AppError> {
     // 1. Verifica esistenza
@@ -122,7 +121,7 @@ pub async fn update_user(
 
 /// Elimina un utente per ID.
 /// Restituisce 404 se non esisteva.
-pub async fn delete_user(pool: &PgPool, id: Uuid) -> Result<(), AppError> {
+pub async fn delete_user(pool: &PgPool, id: i64) -> Result<(), AppError> {
     let rows_affected = user_repository::delete(pool, id).await?;
 
     if rows_affected == 0 {

@@ -12,7 +12,6 @@
 use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use sqlx::PgPool;
-use uuid::Uuid;
 
 use crate::dto::auth::{AuthResponse, Claims, LoginRequest, RegisterRequest, UserInfo};
 use crate::errors::AppError;
@@ -53,7 +52,7 @@ pub async fn register(
         user_repository::create(pool, &req.email, &req.username, &password_hash).await?;
 
     // 4. Genera JWT
-    let token = generate_jwt(&user.id, &user.email, jwt_secret, jwt_expiration_hours)?;
+    let token = generate_jwt(user.id, &user.email, jwt_secret, jwt_expiration_hours)?;
 
     Ok(AuthResponse {
         token,
@@ -101,7 +100,7 @@ pub async fn login(
     }
 
     // 4. Genera JWT
-    let token = generate_jwt(&user.id, &user.email, jwt_secret, jwt_expiration_hours)?;
+    let token = generate_jwt(user.id, &user.email, jwt_secret, jwt_expiration_hours)?;
 
     Ok(AuthResponse {
         token,
@@ -136,7 +135,7 @@ pub fn validate_jwt(token: &str, jwt_secret: &str) -> Result<Claims, AppError> {
 /// - `iat`: timestamp di emissione
 /// - `exp`: timestamp di scadenza (iat + jwt_expiration_hours)
 fn generate_jwt(
-    user_id: &Uuid,
+    user_id: i64,
     email: &str,
     jwt_secret: &str,
     expiration_hours: i64,
@@ -146,7 +145,7 @@ fn generate_jwt(
     let iat = now.timestamp() as usize;
 
     let claims = Claims {
-        sub: user_id.to_string(),
+        sub: user_id,
         email: email.to_string(),
         exp,
         iat,

@@ -7,7 +7,6 @@
 /// - Possiamo cambiare il DB senza cambiare il contratto API
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 /// Dati ricevuti dal client per il login.
 /// `#[derive(Deserialize)]` permette ad axum di costruire questo struct
@@ -38,7 +37,7 @@ pub struct AuthResponse {
 /// Info pubbliche dell'utente da includere nella risposta auth.
 #[derive(Debug, Serialize)]
 pub struct UserInfo {
-    pub id: Uuid,
+    pub id: i64,
     pub email: String,
     pub username: String,
 }
@@ -50,7 +49,7 @@ pub struct UserInfo {
 /// - `iat` (issued at): timestamp Unix di emissione
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
-    pub sub: String, // UUID dell'utente come stringa
+    pub sub: i64, // ID intero dell'utente
     pub email: String,
     pub exp: usize,
     pub iat: usize,

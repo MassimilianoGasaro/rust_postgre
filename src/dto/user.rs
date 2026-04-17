@@ -7,13 +7,12 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 /// Risposta standard per un utente — usata in GET /users e GET /users/:id.
 /// Notare: nessun campo sensibile (password_hash, ecc.)
 #[derive(Debug, Serialize)]
 pub struct UserResponse {
-    pub id: Uuid,
+    pub id: i64,
     pub email: String,
     pub username: String,
     pub is_active: bool,
