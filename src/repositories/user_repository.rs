@@ -10,7 +10,7 @@
 use sqlx::PgPool;
 
 use crate::errors::AppError;
-use crate::models::user::User;
+use crate::models::user::{User, UserWithInfo};
 
 /// Cerca un utente per email. Ritorna None se non esiste.
 /// Usato durante il login per trovare l'utente da autenticare.
@@ -41,6 +41,26 @@ pub async fn find_by_id(pool: &PgPool, id: i64) -> Result<Option<User>, AppError
         SELECT id, email, username, password_hash, is_active, created_at, updated_at
         FROM users
         WHERE id = $1
+        "#,
+        id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(user)
+}
+
+/// Cerca un utente per ID includendo i dati del suo profilo (users_info).
+/// Usa LEFT JOIN: se il profilo non esiste ancora, `bio` sarà None.
+pub async fn find_by_id_with_info(pool: &PgPool, id: i64) -> Result<Option<UserWithInfo>, AppError> {
+    let user = sqlx::query_as!(
+        UserWithInfo,
+        r#"
+        SELECT u.id, u.email, u.username, u.password_hash, u.is_active, u.created_at, u.updated_at,
+               ui.bio AS "bio: Option<String>"
+        FROM users u
+        LEFT JOIN users_info ui ON ui.user_id = u.id
+        WHERE u.id = $1
         "#,
         id
     )

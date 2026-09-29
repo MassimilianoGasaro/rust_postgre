@@ -28,11 +28,9 @@ pub struct User {
 }
 
 /// Mappa la tabella `users_info` nel database.
-/// Relazione 1-a-1 con `users`: ogni utente ha esattamente un profilo.
 /// `user_id` è sia PRIMARY KEY che FOREIGN KEY → non possono esistere righe orfane.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct UserInfo {
-    pub id: i64,
     /// FK → users.id (1-a-1)
     pub user_id: i64,
     pub bio: String,
@@ -43,10 +41,27 @@ pub struct UserInfo {
 /// `user_id` è sia PRIMARY KEY che FOREIGN KEY → non possono esistere righe orfane.
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct UserConfig {
-    pub id: i64,
     /// FK → users.id (1-a-1)
     pub user_id: i64,
     pub can_edit: bool,
+}
+
+/// Risultato di una JOIN tra `users` e `users_info`.
+/// Usata quando serve l'utente insieme al suo profilo in un'unica query.
+/// Non mappa direttamente una tabella — è uno "view model" da query.
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct UserWithInfo {
+    // ── Campi da users ──────────────────────────────────────────────────────
+    pub id: i64,
+    pub email: String,
+    pub username: String,
+    #[serde(skip_serializing)]
+    pub password_hash: String,
+    pub is_active: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    // ── Campi da users_info (NULL se il profilo non esiste ancora) ───────────
+    pub bio: Option<String>,
 }
 
 
