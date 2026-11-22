@@ -10,7 +10,10 @@ use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
 
 use super::metrics::elevation_gain;
-use super::{local_name, parse_time, rounded_mean, ParseError, ParsedActivity, Sport};
+use super::{
+    check_depth, finite_number, local_name, parse_time, rounded_mean, seconds_to_i32, ParseError,
+    ParsedActivity, Sport,
+};
 
 /// Dati di un giro (`<Lap>`).
 #[derive(Default)]
@@ -27,6 +30,8 @@ struct Lap {
 #[derive(Default)]
 struct TcxReader {
     stack: Vec<String>,
+    /// Quanti `<Trackpoint>` sono aperti (evita di scorrere la pila a ogni testo)
+    trackpoint_depth: usize,
     activity_seen: bool,
     activity_done: bool,
     sport_raw: String,
@@ -47,6 +52,7 @@ impl TcxReader {
                 "root element is not <TrainingCenterDatabase>".into(),
             ));
         }
+        check_depth(self.stack.len())?;
         match name.as_str() {
             "Activity" if !self.activity_seen => {
                 self.activity_seen = true;
@@ -61,6 +67,7 @@ impl TcxReader {
                 }
             }
             "Lap" if self.activity_seen => self.current_lap = Some(Lap::default()),
+            "Trackpoint" => self.trackpoint_depth += 1,
             _ => {}
         }
         self.stack.push(name);
@@ -77,8 +84,8 @@ impl TcxReader {
             return Ok(());
         };
         let parent = n.checked_sub(2).map(|i| self.stack[i].as_str());
-        let number = text.parse::<f64>().ok();
-        let in_trackpoint = self.stack.iter().any(|s| s == "Trackpoint");
+        let number = finite_number(text);
+        let in_trackpoint = self.trackpoint_depth > 0;
 
         match (parent, name) {
             (Some("Activity"), "Id") => self.id = Some(parse_time(text)?),
@@ -89,7 +96,7 @@ impl TcxReader {
             (Some("Lap"), field) => {
                 if let Some(lap) = self.current_lap.as_mut() {
                     match field {
-                        "TotalTimeSeconds" => lap.total_time_s = number.unwrap_or(0.0),
+                        "TotalTimeSeconds" => lap.total_time_s = number.unwrap_or(0.0).max(0.0),
                         "DistanceMeters" => lap.distance_m = number,
                         "Calories" => lap.calories = number,
                         "Cadence" => lap.cadence = number,
@@ -119,6 +126,7 @@ impl TcxReader {
                     self.laps.push(lap);
                 }
             }
+            Some("Trackpoint") => self.trackpoint_depth = self.trackpoint_depth.saturating_sub(1),
             // Solo la prima attività viene letta
             Some("Activity") if self.activity_seen => self.activity_done = true,
             _ => {}
@@ -183,6 +191,11 @@ pub fn parse(bytes: &[u8]) -> Result<ParsedActivity, ParseError> {
             "root element <TrainingCenterDatabase> not found".into(),
         ));
     }
+    // Il Reader grezzo non segnala elementi rimasti aperti a fine file:
+    // il documento deve essere completo, oppure la prima attività chiusa
+    if !state.activity_done && !state.stack.is_empty() {
+        return Err(ParseError::Malformed("unexpected end of file".into()));
+    }
     build(state)
 }
 
@@ -197,10 +210,10 @@ fn build(state: TcxReader) -> Result<ParsedActivity, ParseError> {
 
     let laps = &state.laps;
     let total_time_s: f64 = laps.iter().map(|l| l.total_time_s).sum();
-    let moving_s = (!laps.is_empty()).then(|| total_time_s.round() as i32);
+    let moving_s = (!laps.is_empty()).then(|| seconds_to_i32(total_time_s));
     let elapsed_s = match state.times.last() {
-        Some(last) => (*last - start_time).num_seconds().max(0) as i32,
-        None => total_time_s.round() as i32,
+        Some(last) => i32::try_from((*last - start_time).num_seconds().max(0)).unwrap_or(i32::MAX),
+        None => seconds_to_i32(total_time_s),
     };
 
     let distances: Vec<f64> = laps.iter().filter_map(|l| l.distance_m).collect();
@@ -314,6 +327,45 @@ mod tests {
         let a = parse(xml).unwrap();
         assert_eq!(a.sport, Sport::Running);
         assert_eq!(a.distance_m, Some(100.0));
+    }
+
+    #[test]
+    fn tcx_too_deep_is_malformed() {
+        let xml = format!(
+            "<TrainingCenterDatabase>{}{}</TrainingCenterDatabase>",
+            "<a>".repeat(100),
+            "</a>".repeat(100)
+        );
+        assert_eq!(parse(xml.as_bytes()).unwrap_err().code(), "PARSE_ERROR");
+    }
+
+    #[test]
+    fn truncated_tcx_is_malformed() {
+        let full = include_bytes!("../../tests/fixtures/ride.tcx");
+        // Taglio arbitrario (anche in mezzo a un tag)
+        assert_eq!(parse(&full[..full.len() * 2 / 3]).unwrap_err().code(), "PARSE_ERROR");
+        // Taglio pulito subito dopo un elemento chiuso
+        let text = std::str::from_utf8(full).unwrap();
+        let end = text.find("</Trackpoint>").unwrap() + "</Trackpoint>".len();
+        let err = parse(&text.as_bytes()[..end]).unwrap_err();
+        assert_eq!(err.code(), "PARSE_ERROR");
+        assert!(err.to_string().contains("unexpected end of file"), "{err}");
+    }
+
+    #[test]
+    fn tcx_non_finite_values_are_ignored() {
+        let xml = br#"<TrainingCenterDatabase><Activities><Activity Sport="Biking">
+            <Id>2026-01-10T08:00:00Z</Id>
+            <Lap><TotalTimeSeconds>NaN</TotalTimeSeconds><DistanceMeters>inf</DistanceMeters>
+              <Calories>NaN</Calories><Track>
+                <Trackpoint><Time>2026-01-10T08:00:00Z</Time><AltitudeMeters>NaN</AltitudeMeters></Trackpoint>
+              </Track></Lap>
+            </Activity></Activities></TrainingCenterDatabase>"#;
+        let a = parse(xml).unwrap();
+        assert_eq!(a.distance_m, None);
+        assert_eq!(a.calories, None);
+        assert_eq!(a.elevation_gain_m, None);
+        assert_eq!(a.moving_s, Some(0));
     }
 
     #[test]

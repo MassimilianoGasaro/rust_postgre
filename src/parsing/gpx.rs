@@ -9,7 +9,10 @@ use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
 
 use super::metrics::{elevation_gain, haversine_m, moving_seconds};
-use super::{local_name, parse_time, rounded_mean, ParseError, ParsedActivity, Sport};
+use super::{
+    check_depth, finite_number, local_name, parse_time, rounded_mean, ParseError, ParsedActivity,
+    Sport,
+};
 
 /// Punto di traccia con tempo (i punti senza tempo vengono scartati).
 struct Point {
@@ -38,6 +41,7 @@ impl GpxReader {
         if self.stack.is_empty() && name != "gpx" {
             return Err(ParseError::Malformed("root element is not <gpx>".into()));
         }
+        check_depth(self.stack.len())?;
         if name == "trkpt" {
             let (mut lat, mut lon) = (None, None);
             for attr in e.attributes() {
@@ -46,8 +50,8 @@ impl GpxReader {
                     .unescape_value()
                     .map_err(|e| ParseError::Malformed(e.to_string()))?;
                 match local_name(attr.key.local_name()).as_str() {
-                    "lat" => lat = value.trim().parse::<f64>().ok(),
-                    "lon" => lon = value.trim().parse::<f64>().ok(),
+                    "lat" => lat = finite_number(&value).filter(|v| v.abs() <= 90.0),
+                    "lon" => lon = finite_number(&value).filter(|v| v.abs() <= 180.0),
                     _ => {}
                 }
             }
@@ -76,10 +80,10 @@ impl GpxReader {
         if let Some(point) = self.current.as_mut() {
             match name.as_str() {
                 "time" => point.time = Some(parse_time(text)?),
-                "ele" => point.ele = text.parse().ok(),
-                "hr" => point.hr = text.parse().ok(),
-                "cad" => point.cad = text.parse().ok(),
-                "power" => point.power = text.parse().ok(),
+                "ele" => point.ele = finite_number(text),
+                "hr" => point.hr = finite_number(text),
+                "cad" => point.cad = finite_number(text),
+                "power" => point.power = finite_number(text),
                 _ => {}
             }
             return Ok(());
@@ -159,6 +163,10 @@ pub fn parse(bytes: &[u8]) -> Result<ParsedActivity, ParseError> {
     if !seen_root {
         return Err(ParseError::Malformed("root element <gpx> not found".into()));
     }
+    // Il Reader grezzo non segnala elementi rimasti aperti a fine file
+    if !state.stack.is_empty() {
+        return Err(ParseError::Malformed("unexpected end of file".into()));
+    }
     build(state)
 }
 
@@ -171,7 +179,7 @@ fn build(state: GpxReader) -> Result<ParsedActivity, ParseError> {
     let (Some(start_time), Some(end_time)) = (first.time, last.time) else {
         return Err(ParseError::Empty);
     };
-    let elapsed_s = (end_time - start_time).num_seconds().max(0) as i32;
+    let elapsed_s = i32::try_from((end_time - start_time).num_seconds().max(0)).unwrap_or(i32::MAX);
 
     // Distanza cumulata punto per punto (serve anche al tempo in movimento)
     let mut cumulative = 0.0;
@@ -264,6 +272,46 @@ mod tests {
     fn gpx_points_without_time_are_empty() {
         let xml = br#"<gpx><trk><trkseg><trkpt lat="0" lon="0"><ele>1</ele></trkpt></trkseg></trk></gpx>"#;
         assert_eq!(parse(xml).unwrap_err().code(), "EMPTY_ACTIVITY");
+    }
+
+    #[test]
+    fn gpx_non_finite_or_out_of_range_coordinates_are_malformed() {
+        for (lat, lon) in [("NaN", "0"), ("inf", "0"), ("91", "0"), ("0", "181"), ("0", "-NaN")] {
+            let xml = format!(
+                r#"<gpx><trk><trkseg><trkpt lat="{lat}" lon="{lon}"><time>2026-01-10T07:00:00Z</time></trkpt></trkseg></trk></gpx>"#
+            );
+            assert_eq!(parse(xml.as_bytes()).unwrap_err().code(), "PARSE_ERROR", "{lat},{lon}");
+        }
+    }
+
+    #[test]
+    fn gpx_non_finite_elevation_is_ignored() {
+        let xml = br#"<gpx><trk><trkseg>
+            <trkpt lat="0" lon="0"><ele>NaN</ele><time>2026-01-10T07:00:00Z</time></trkpt>
+            <trkpt lat="0.001" lon="0"><ele>100</ele><time>2026-01-10T07:00:10Z</time></trkpt>
+            <trkpt lat="0.002" lon="0"><ele>110</ele><time>2026-01-10T07:00:20Z</time></trkpt>
+            </trkseg></trk></gpx>"#;
+        let a = parse(xml).unwrap();
+        assert_eq!(a.elevation_gain_m, Some(10.0));
+    }
+
+    #[test]
+    fn gpx_too_deep_is_malformed() {
+        let xml = format!("<gpx>{}{}</gpx>", "<a>".repeat(100), "</a>".repeat(100));
+        assert_eq!(parse(xml.as_bytes()).unwrap_err().code(), "PARSE_ERROR");
+    }
+
+    #[test]
+    fn truncated_gpx_is_malformed() {
+        let full = fixture("run.gpx");
+        // Taglio arbitrario (anche in mezzo a un tag)
+        assert_eq!(parse(&full[..full.len() * 2 / 3]).unwrap_err().code(), "PARSE_ERROR");
+        // Taglio pulito subito dopo un elemento chiuso
+        let text = String::from_utf8(full).unwrap();
+        let end = text.find("</trkpt>").unwrap() + "</trkpt>".len();
+        let err = parse(&text.as_bytes()[..end]).unwrap_err();
+        assert_eq!(err.code(), "PARSE_ERROR");
+        assert!(err.to_string().contains("unexpected end of file"), "{err}");
     }
 
     #[test]

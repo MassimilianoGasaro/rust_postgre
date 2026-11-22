@@ -135,11 +135,38 @@ pub fn parse(format: FileFormat, bytes: &[u8]) -> Result<ParsedActivity, ParseEr
     }
 }
 
+/// Profondità massima di annidamento XML accettata (difesa da input ostili).
+pub(crate) const MAX_XML_DEPTH: usize = 64;
+
 /// Interpreta un timestamp RFC 3339 e lo converte in UTC.
 pub(crate) fn parse_time(s: &str) -> Result<DateTime<Utc>, ParseError> {
     DateTime::parse_from_rfc3339(s.trim())
         .map(|t| t.with_timezone(&Utc))
-        .map_err(|e| ParseError::Malformed(format!("invalid timestamp '{}': {e}", s.trim())))
+        .map_err(|e| {
+            // Il testo riportato nell'errore è troncato: l'input non è fidato
+            let shown: String = s.trim().chars().take(40).collect();
+            ParseError::Malformed(format!("invalid timestamp '{shown}': {e}"))
+        })
+}
+
+/// Numero di secondi (anche frazionari) → i32, saturando invece di troncare.
+pub(crate) fn seconds_to_i32(seconds: f64) -> i32 {
+    i32::try_from(seconds.round() as i64).unwrap_or(i32::MAX)
+}
+
+/// Verifica la profondità di annidamento prima di aprire un nuovo elemento.
+pub(crate) fn check_depth(depth: usize) -> Result<(), ParseError> {
+    if depth >= MAX_XML_DEPTH {
+        return Err(ParseError::Malformed(format!(
+            "xml nesting deeper than {MAX_XML_DEPTH} levels"
+        )));
+    }
+    Ok(())
+}
+
+/// Parsing di un numero finito (NaN e infiniti sono trattati come assenti).
+pub(crate) fn finite_number(s: &str) -> Option<f64> {
+    s.trim().parse::<f64>().ok().filter(|v| v.is_finite())
 }
 
 /// Local name (senza prefisso di namespace) di un elemento XML.
@@ -182,6 +209,15 @@ mod tests {
             let err = parse(format, b"not xml").unwrap_err();
             assert_eq!(err.code(), "PARSE_ERROR");
         }
+    }
+
+    #[test]
+    fn parse_time_error_truncates_echoed_text() {
+        let long = "x".repeat(500);
+        let ParseError::Malformed(msg) = parse_time(&long).unwrap_err() else {
+            panic!("expected Malformed");
+        };
+        assert!(msg.len() < 200, "len = {}", msg.len());
     }
 
     #[test]

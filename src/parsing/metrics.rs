@@ -12,12 +12,14 @@ const MOVING_SPEED_MPS: f64 = 0.5;
 /// Dislivello positivo con isteresi di 2 m: una salita conta solo quando
 /// supera di oltre 2 m la quota di riferimento, per filtrare il rumore.
 pub fn elevation_gain(altitudes: &[f64]) -> f64 {
-    let Some(&first) = altitudes.first() else {
+    // Le quote non finite (NaN, infinito) vengono ignorate
+    let mut finite = altitudes.iter().copied().filter(|a| a.is_finite());
+    let Some(first) = finite.next() else {
         return 0.0;
     };
     let mut reference = first;
     let mut gain = 0.0;
-    for &a in altitudes {
+    for a in finite {
         if a > reference + ELEVATION_HYSTERESIS_M {
             gain += a - reference;
             reference = a;
@@ -34,7 +36,8 @@ pub fn haversine_m(a: (f64, f64), b: (f64, f64)) -> f64 {
     let (lat2, lon2) = (b.0.to_radians(), b.1.to_radians());
     let h = ((lat2 - lat1) / 2.0).sin().powi(2)
         + lat1.cos() * lat2.cos() * ((lon2 - lon1) / 2.0).sin().powi(2);
-    2.0 * EARTH_RADIUS_M * h.sqrt().asin()
+    // L'errore di arrotondamento può portare h appena sopra 1 (asin → NaN)
+    2.0 * EARTH_RADIUS_M * h.min(1.0).sqrt().asin()
 }
 
 /// Secondi in movimento: somma degli intervalli tra campioni consecutivi con
@@ -51,7 +54,7 @@ pub fn moving_seconds(samples: &[(DateTime<Utc>, f64)]) -> i32 {
             (speed > MOVING_SPEED_MPS).then_some(dt_ms)
         })
         .sum();
-    (moving_ms as f64 / 1000.0).round() as i32
+    super::seconds_to_i32(moving_ms as f64 / 1000.0)
 }
 
 #[cfg(test)]
@@ -69,6 +72,18 @@ mod tests {
     fn elevation_gain_ignores_noise() {
         assert_eq!(elevation_gain(&[100., 101., 100., 101.]), 0.0);
         assert_eq!(elevation_gain(&[]), 0.0);
+    }
+
+    #[test]
+    fn elevation_gain_skips_non_finite_values() {
+        assert_eq!(elevation_gain(&[f64::NAN, 100., 110.]), 10.0);
+        assert_eq!(elevation_gain(&[f64::NAN, f64::INFINITY]), 0.0);
+    }
+
+    #[test]
+    fn haversine_antipodal_points_are_finite() {
+        let d = haversine_m((0.0, 0.0), (0.0, 180.0));
+        assert!(d.is_finite() && d > 20_000_000.0, "d = {d}");
     }
 
     #[test]
