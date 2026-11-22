@@ -33,6 +33,8 @@ pub struct Config {
     pub max_upload_bytes: usize,
     /// Dimensione massima di un singolo file caricato (byte).
     pub max_file_bytes: usize,
+    /// Numero massimo di import elaborati in parallelo (su tutti gli utenti).
+    pub max_concurrent_imports: usize,
 }
 
 impl Config {
@@ -74,6 +76,11 @@ impl Config {
                 .unwrap_or_else(|_| "52428800".to_string())
                 .parse()
                 .expect("MAX_FILE_BYTES deve essere un numero"),
+
+            max_concurrent_imports: std::env::var("MAX_CONCURRENT_IMPORTS")
+                .unwrap_or_else(|_| "2".to_string())
+                .parse()
+                .expect("MAX_CONCURRENT_IMPORTS deve essere un numero"),
         }
     }
 

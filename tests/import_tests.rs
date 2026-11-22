@@ -417,36 +417,89 @@ async fn insert_same_hash_reports_duplicate_file(pool: PgPool) {
     }
 }
 
-/// Due upload concorrenti della stessa attività (file diversi): una sola attività.
+/// Un solo import attivo per utente: con un import `processing` un nuovo upload è 409.
 #[sqlx::test]
-async fn concurrent_uploads_of_same_activity_insert_once(pool: PgPool) {
+async fn upload_while_import_processing_is_409(pool: PgPool) {
     let app = common::test_app(pool);
+    let (user_id, token) = athlete(&app).await;
+    sqlx::query("INSERT INTO imports (user_id, status) VALUES ($1, 'processing')")
+        .bind(user_id)
+        .execute(&app.pool)
+        .await
+        .unwrap();
+
+    let (status, body) = app.upload(&token, &[("run.gpx", RUN_GPX.to_vec())]).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert_eq!(body["code"], "IMPORT_IN_PROGRESS");
+    assert_eq!(body["status"], 409);
+    assert_no_temp_files(&app);
+
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM imports")
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+
+    // Un altro utente può importare nel frattempo
+    let (_, other) = app.register("other@example.com", "other", "athlete").await;
+    let result = import(&app, &other, &[("run.gpx", RUN_GPX.to_vec())]).await;
+    assert_eq!(item(&result, "run.gpx")["status"], "imported", "{result}");
+}
+
+/// Il vincolo a DB (non solo il controllo preventivo) impedisce un secondo import in corso.
+#[sqlx::test]
+async fn create_second_processing_import_is_import_in_progress(pool: PgPool) {
+    let app = common::test_app(pool.clone());
+    let (user_id, _) = athlete(&app).await;
+
+    let first = import_repository::create(&pool, user_id).await.unwrap();
+    match import_repository::create(&pool, user_id).await.unwrap_err() {
+        AppError::Coded { status, code, .. } => {
+            assert_eq!(status, StatusCode::CONFLICT);
+            assert_eq!(code, import_repository::IMPORT_IN_PROGRESS);
+        }
+        other => panic!("atteso IMPORT_IN_PROGRESS, ottenuto {other:?}"),
+    }
+
+    // Concluso il primo, se ne può creare un altro
+    import_repository::complete(&pool, first.id).await.unwrap();
+    import_repository::create(&pool, user_id).await.unwrap();
+}
+
+/// Due upload concorrenti dello stesso utente: uno è accettato, l'altro è 409.
+///
+/// Senza permessi di elaborazione il primo import resta `processing`: l'esito
+/// non dipende dalla velocità dell'elaborazione.
+#[sqlx::test]
+async fn concurrent_uploads_of_same_user_one_is_rejected(pool: PgPool) {
+    let app = common::test_app_with_import_permits(pool, 0);
     let (_, token) = athlete(&app).await;
 
     let tcx = vec![("ride.tcx", RIDE_TCX.to_vec())];
     let gpx = vec![("ride_same_as_tcx.gpx", RIDE_SAME_AS_TCX_GPX.to_vec())];
     let ((s1, b1), (s2, b2)) = tokio::join!(app.upload(&token, &tcx), app.upload(&token, &gpx));
-    assert_eq!(s1, StatusCode::ACCEPTED, "{b1}");
-    assert_eq!(s2, StatusCode::ACCEPTED, "{b2}");
-    let first = app.wait_import(&token, b1["id"].as_i64().unwrap()).await;
-    let second = app.wait_import(&token, b2["id"].as_i64().unwrap()).await;
-
-    let mut statuses = vec![
-        item(&first, "ride.tcx")["status"]
-            .as_str()
-            .unwrap()
-            .to_string(),
-        item(&second, "ride_same_as_tcx.gpx")["status"]
-            .as_str()
-            .unwrap()
-            .to_string(),
-    ];
+    let mut statuses = [s1, s2];
     statuses.sort();
-    assert_eq!(statuses, ["duplicate", "imported"], "{first} {second}");
+    assert_eq!(
+        statuses,
+        [StatusCode::ACCEPTED, StatusCode::CONFLICT],
+        "{b1} {b2}"
+    );
+    let rejected = if s1 == StatusCode::CONFLICT { &b1 } else { &b2 };
+    assert_eq!(rejected["code"], "IMPORT_IN_PROGRESS");
 
-    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM activities")
-        .fetch_one(&app.pool)
-        .await
-        .unwrap();
-    assert_eq!(count, 1);
+    // In attesa di un permesso l'import accettato resta `processing`
+    let accepted = if s1 == StatusCode::ACCEPTED { &b1 } else { &b2 };
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    let (status, body) = app
+        .request(
+            Method::GET,
+            &format!("/api/imports/{}", accepted["id"]),
+            Some(&token),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["status"], "processing", "{body}");
+    assert_eq!(body["items"].as_array().unwrap().len(), 0, "{body}");
 }

@@ -8,7 +8,10 @@
 /// 5. Costruire l'AppState condiviso
 /// 6. Costruire il Router (vedi lib.rs → build_router)
 /// 7. Avviare il server TCP in ascolto
+use std::sync::Arc;
+
 use axum_server::tls_rustls::RustlsConfig;
+use tokio::sync::Semaphore;
 
 use rust_postgre::{AppState, build_router, config, repositories::import_repository};
 
@@ -73,6 +76,7 @@ async fn main() {
         max_upload_bytes: config.max_upload_bytes,
         max_file_bytes: config.max_file_bytes,
         cors_origin: config.cors_origin,
+        import_permits: Arc::new(Semaphore::new(config.max_concurrent_imports)),
     };
 
     // 6. Costruisce il Router

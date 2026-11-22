@@ -1,7 +1,8 @@
 /// controllers/import_controller.rs — Handler HTTP per gli import di file
 ///
 /// Endpoint protetti da JWT:
-///   POST /imports      → upload multipart (campo ripetibile `files`), solo atleta (202)
+///   POST /imports      → upload multipart (campo ripetibile `files`), solo atleta (202;
+///                        409 IMPORT_IN_PROGRESS se l'utente ha già un import in corso)
 ///   GET  /imports      → ultimi 20 import dell'utente, senza item
 ///   GET  /imports/:id  → dettaglio con gli item (solo il proprietario, altrimenti 404)
 ///
@@ -39,8 +40,9 @@ pub async fn upload(
     auth: AuthUser,
     multipart: Result<Multipart, MultipartRejection>,
 ) -> Result<(StatusCode, Json<ImportDto>), AppError> {
-    // Il ruolo si verifica prima di leggere il corpo
+    // Ruolo e import in corso si verificano prima di leggere il corpo
     auth.require_role(Role::Athlete)?;
+    import_service::ensure_no_import_in_progress(&state.pool, auth.id).await?;
     let mut multipart = multipart.map_err(|rejection| {
         AppError::coded(
             rejection.status(),
@@ -62,9 +64,15 @@ pub async fn upload(
         max_file_bytes: state.max_file_bytes as u64,
         ..ArchiveLimits::default()
     };
-    let import =
-        import_service::start_import(&state.pool, &state.upload_dir, limits, auth.id, files)
-            .await?;
+    let import = import_service::start_import(
+        &state.pool,
+        &state.upload_dir,
+        limits,
+        state.import_permits.clone(),
+        auth.id,
+        files,
+    )
+    .await?;
     Ok((StatusCode::ACCEPTED, Json(import)))
 }
 

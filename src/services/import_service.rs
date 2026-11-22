@@ -2,7 +2,10 @@
 ///
 /// Un upload viene registrato come import `processing` e restituito subito;
 /// l'elaborazione avviene in background (`tokio::spawn`), un file caricato
-/// alla volta:
+/// alla volta. Ogni utente ha al massimo un import `processing` (un altro
+/// upload è `409 IMPORT_IN_PROGRESS`) e l'elaborazione parte solo con uno dei
+/// permessi globali (`MAX_CONCURRENT_IMPORTS`): in attesa l'import resta
+/// `processing`.
 ///
 /// 1. `expand_upload` (sincrono, in `spawn_blocking`) espande il file o lo ZIP
 ///    e consegna ogni elemento su un canale limitato;
@@ -14,15 +17,17 @@
 ///
 /// Un errore inatteso su un elemento lo marca `failed`/`INTERNAL` e si prosegue.
 /// Un supervisore chiude l'import in ogni caso (anche se l'elaborazione va in
-/// panic), con alcuni tentativi: un import non resta mai `processing` finché
-/// il server è attivo.
+/// panic), con alcuni tentativi: a elaborazione avviata un import non resta
+/// mai `processing` finché il server è attivo.
 use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
+use axum::http::StatusCode;
 use sqlx::PgPool;
 use tempfile::TempPath;
-use tokio::sync::mpsc;
+use tokio::sync::{Semaphore, mpsc};
 
 use crate::dto::import::ImportDto;
 use crate::errors::AppError;
@@ -76,13 +81,30 @@ enum Outcome {
     Failed(&'static str),
 }
 
+/// `409 IMPORT_IN_PROGRESS` se l'utente ha già un import `processing`.
+///
+/// Controllo preventivo (evita di ricevere un upload che verrebbe rifiutato);
+/// il vincolo definitivo è applicato da `import_repository::create`.
+pub async fn ensure_no_import_in_progress(pool: &PgPool, user_id: i64) -> Result<(), AppError> {
+    if import_repository::has_processing(pool, user_id).await? {
+        return Err(AppError::coded(
+            StatusCode::CONFLICT,
+            import_repository::IMPORT_IN_PROGRESS,
+            "Un import è già in corso: attendi che termini",
+        ));
+    }
+    Ok(())
+}
+
 /// Registra un import `processing` e ne avvia l'elaborazione in background.
 ///
 /// I file temporanei passano al task di background, che li elimina.
+/// L'elaborazione attende uno dei `permits` globali.
 pub async fn start_import(
     pool: &PgPool,
     upload_dir: &Path,
     limits: ArchiveLimits,
+    permits: Arc<Semaphore>,
     user_id: i64,
     files: Vec<UploadedFile>,
 ) -> Result<ImportDto, AppError> {
@@ -95,7 +117,12 @@ pub async fn start_import(
         user_id,
         import_id: import.id,
     };
-    tokio::spawn(supervise(pool.clone(), import.id, run_import(ctx, files)));
+    tokio::spawn(supervise(
+        pool.clone(),
+        import.id,
+        permits,
+        run_import(ctx, files),
+    ));
 
     Ok(ImportDto::with_items(import, Vec::new()))
 }
@@ -115,14 +142,26 @@ pub async fn list_imports(pool: &PgPool, auth: &AuthUser) -> Result<Vec<ImportDt
     Ok(imports.into_iter().map(ImportDto::from).collect())
 }
 
-/// Esegue `work` in un task separato e, comunque termini (anche in panic),
-/// chiude l'import come `completed`.
-async fn supervise<F>(pool: PgPool, import_id: i64, work: F)
+/// Attende un permesso, esegue `work` in un task separato e, comunque termini
+/// (anche in panic), chiude l'import come `completed`.
+///
+/// Il permesso è tenuto per tutta l'elaborazione e rilasciato al suo termine.
+async fn supervise<F>(pool: PgPool, import_id: i64, permits: Arc<Semaphore>, work: F)
 where
     F: Future<Output = ()> + Send + 'static,
 {
-    if let Err(e) = tokio::spawn(work).await {
-        tracing::error!(import_id, "elaborazione dell'import interrotta: {e}");
+    match permits.acquire_owned().await {
+        Ok(permit) => {
+            let task = tokio::spawn(async move {
+                let _permit = permit;
+                work.await;
+            });
+            if let Err(e) = task.await {
+                tracing::error!(import_id, "elaborazione dell'import interrotta: {e}");
+            }
+        }
+        // Il semaforo non viene mai chiuso: caso solo difensivo
+        Err(e) => tracing::error!(import_id, "permesso di elaborazione non ottenuto: {e}"),
     }
 
     let completed = with_retry(|| import_repository::complete(&pool, import_id)).await;
@@ -364,30 +403,75 @@ fn truncate_filename(name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
     use super::*;
+
+    /// Crea un utente e un import `processing`; ritorna `(user_id, import_id)`.
+    async fn processing_import(pool: &PgPool) -> (i64, i64) {
+        let user_id: i64 = sqlx::query_scalar(
+            "INSERT INTO users (email, username, password_hash, role)              VALUES ('a@example.com', 'a', 'x', 'athlete') RETURNING id",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        let import = import_repository::create(pool, user_id).await.unwrap();
+        (user_id, import.id)
+    }
+
+    /// L'elaborazione parte solo con un permesso; nel frattempo l'import resta `processing`.
+    #[sqlx::test]
+    async fn supervise_waits_for_a_permit(pool: PgPool) {
+        let (user_id, import_id) = processing_import(&pool).await;
+        let permits = Arc::new(Semaphore::new(0));
+        let started = Arc::new(AtomicBool::new(false));
+
+        let flag = started.clone();
+        let handle = tokio::spawn(supervise(
+            pool.clone(),
+            import_id,
+            permits.clone(),
+            async move {
+                flag.store(true, Ordering::SeqCst);
+            },
+        ));
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(!started.load(Ordering::SeqCst), "avviato senza permesso");
+        let import = import_repository::find_for_user(&pool, import_id, user_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(import.status, "processing");
+
+        permits.add_permits(1);
+        handle.await.unwrap();
+        assert!(started.load(Ordering::SeqCst));
+        let import = import_repository::find_for_user(&pool, import_id, user_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(import.status, "completed");
+        // Il permesso è restituito a fine elaborazione
+        assert_eq!(permits.available_permits(), 1);
+    }
 
     /// Anche se l'elaborazione va in panic l'import viene chiuso.
     #[sqlx::test]
     async fn supervise_completes_import_when_work_panics(pool: PgPool) {
-        let user_id: i64 = sqlx::query_scalar(
-            "INSERT INTO users (email, username, password_hash, role)              VALUES ('a@example.com', 'a', 'x', 'athlete') RETURNING id",
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        let import = import_repository::create(&pool, user_id).await.unwrap();
-        import_repository::insert_item(&pool, import.id, "a.gpx", ItemStatus::Pending, None)
+        let (user_id, import_id) = processing_import(&pool).await;
+        import_repository::insert_item(&pool, import_id, "a.gpx", ItemStatus::Pending, None)
             .await
             .unwrap();
 
-        supervise(pool.clone(), import.id, async {
+        let permits = Arc::new(Semaphore::new(1));
+        supervise(pool.clone(), import_id, permits.clone(), async {
             panic!("elaborazione interrotta (test)");
         })
         .await;
+        assert_eq!(permits.available_permits(), 1);
 
-        let import = import_repository::find_for_user(&pool, import.id, user_id)
+        let import = import_repository::find_for_user(&pool, import_id, user_id)
             .await
             .unwrap()
             .unwrap();

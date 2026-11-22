@@ -6,6 +6,8 @@
 
 #![allow(dead_code)] // ogni file di test usa solo una parte degli helper
 
+use std::sync::Arc;
+
 use axum::{
     Router,
     body::Body,
@@ -14,6 +16,7 @@ use axum::{
 use http_body_util::BodyExt;
 use rust_postgre::{AppState, build_router};
 use sqlx::PgPool;
+use tokio::sync::Semaphore;
 use tower::ServiceExt;
 
 /// Segreto JWT fisso, usato solo nei test.
@@ -33,8 +36,17 @@ pub struct TestApp {
     pub pool: PgPool,
 }
 
+/// Import elaborati in parallelo nell'app di test (come il default di `MAX_CONCURRENT_IMPORTS`).
+pub const TEST_IMPORT_PERMITS: usize = 2;
+
 /// Costruisce l'app di test sul pool indicato.
 pub fn test_app(pool: PgPool) -> TestApp {
+    test_app_with_import_permits(pool, TEST_IMPORT_PERMITS)
+}
+
+/// Come `test_app`, con `permits` import elaborabili in parallelo
+/// (0 → gli import restano `processing` in attesa di un permesso).
+pub fn test_app_with_import_permits(pool: PgPool, permits: usize) -> TestApp {
     let upload_dir = tempfile::tempdir().expect("impossibile creare la directory temporanea");
 
     let state = AppState {
@@ -46,6 +58,7 @@ pub fn test_app(pool: PgPool) -> TestApp {
         // Sopra il limite di default di axum (2 MiB): i test di upload lo superano
         max_file_bytes: 8 * 1024 * 1024,
         cors_origin: None,
+        import_permits: Arc::new(Semaphore::new(permits)),
     };
 
     TestApp {

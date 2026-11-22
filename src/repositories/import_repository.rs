@@ -1,10 +1,17 @@
 /// repositories/import_repository.rs — Query SQL per gli import e i loro item
+use axum::http::StatusCode;
 use sqlx::PgPool;
 
 use crate::errors::AppError;
 use crate::models::import::{Import, ImportItem, ImportStatus, ItemStatus};
 
+/// Codice dell'errore restituito da `create` se l'utente ha già un import in corso.
+pub const IMPORT_IN_PROGRESS: &str = "IMPORT_IN_PROGRESS";
+
 /// Crea un import `processing` per l'utente.
+///
+/// Se l'utente ha già un import `processing` l'indice unico parziale
+/// `imports_one_processing_per_user` fallisce → `409 IMPORT_IN_PROGRESS`.
 pub async fn create(pool: &PgPool, user_id: i64) -> Result<Import, AppError> {
     let import = sqlx::query_as!(
         Import,
@@ -17,9 +24,34 @@ pub async fn create(pool: &PgPool, user_id: i64) -> Result<Import, AppError> {
         ImportStatus::Processing.as_str()
     )
     .fetch_one(pool)
+    .await;
+
+    match import {
+        Ok(import) => Ok(import),
+        Err(sqlx::Error::Database(db))
+            if db.constraint() == Some("imports_one_processing_per_user") =>
+        {
+            Err(AppError::coded(
+                StatusCode::CONFLICT,
+                IMPORT_IN_PROGRESS,
+                "Un import è già in corso: attendi che termini",
+            ))
+        }
+        Err(e) => Err(AppError::Database(e)),
+    }
+}
+
+/// `true` se l'utente ha un import `processing`.
+pub async fn has_processing(pool: &PgPool, user_id: i64) -> Result<bool, AppError> {
+    let found = sqlx::query_scalar!(
+        r#"SELECT EXISTS(SELECT 1 FROM imports WHERE user_id = $1 AND status = $2) AS "found!""#,
+        user_id,
+        ImportStatus::Processing.as_str()
+    )
+    .fetch_one(pool)
     .await?;
 
-    Ok(import)
+    Ok(found)
 }
 
 /// Import per id, solo se appartiene all'utente.

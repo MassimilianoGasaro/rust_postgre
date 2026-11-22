@@ -15,10 +15,12 @@ pub const DUPLICATE_FILE: &str = "DUPLICATE_FILE";
 
 /// Lock esclusivo per utente, fino alla fine della transazione.
 ///
-/// Serializza controllo dei duplicati e inserimento tra import concorrenti
-/// dello stesso utente: due file diversi della stessa attività non possono
-/// passare entrambi il controllo `find_overlapping`. La chiave è l'id utente
-/// (nessun altro advisory lock è usato nell'applicazione).
+/// Serializza controllo dei duplicati e inserimento per utente: due file
+/// diversi della stessa attività non possono passare entrambi il controllo
+/// `find_overlapping`. Con un solo import `processing` per utente il lock è
+/// preso solo dall'import in corso; resta come difesa per altri flussi di
+/// inserimento. La chiave è l'id utente (nessun altro advisory lock è usato
+/// nell'applicazione).
 pub async fn lock_user_for_import<'e>(
     executor: impl PgExecutor<'e>,
     user_id: i64,

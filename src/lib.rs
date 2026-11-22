@@ -17,6 +17,7 @@ pub mod services;
 pub mod storage;
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use axum::{
     Router,
@@ -26,6 +27,7 @@ use axum::{
     routing::{delete, get, post},
 };
 use sqlx::PgPool;
+use tokio::sync::Semaphore;
 use tower_http::cors::CorsLayer;
 
 use controllers::{
@@ -56,6 +58,9 @@ pub struct AppState {
     pub max_file_bytes: usize,
     /// Origine consentita dal CORS (None → CORS non abilitato)
     pub cors_origin: Option<String>,
+    /// Permessi per l'elaborazione degli import: al massimo `MAX_CONCURRENT_IMPORTS`
+    /// import elaborati in parallelo, gli altri restano `processing` in attesa
+    pub import_permits: Arc<Semaphore>,
 }
 
 /// Costruisce e restituisce il Router dell'applicazione.
