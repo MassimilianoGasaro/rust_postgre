@@ -14,3 +14,4 @@ pub mod user_service;
 pub mod access_service;
 pub mod coach_link_service;
 pub mod import_service;
+pub mod stats_service;

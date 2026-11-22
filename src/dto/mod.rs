@@ -3,3 +3,4 @@ pub mod user;
 pub mod coach_link;
 pub mod import;
 pub mod activity;
+pub mod stats;

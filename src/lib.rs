@@ -30,7 +30,7 @@ use tower_http::cors::CorsLayer;
 
 use controllers::{
     activity_controller, auth_controller, coach_link_controller, health_controller,
-    import_controller, user_controller,
+    import_controller, stats_controller, user_controller,
 };
 
 /// AppState — stato condiviso tra tutti gli handler.
@@ -70,6 +70,7 @@ pub struct AppState {
 ///   /api/coach-links, /api/athletes → route protette (relazione allenatore-atleta)
 ///   /api/imports → route protette (upload di file di attività ed esito)
 ///   /api/activities → route protette (elenco e cancellazione attività)
+///   /api/stats → route protette (statistiche per intervallo di date)
 pub fn build_router(state: AppState) -> Router {
     // ── Route PUBBLICHE — accessibili senza token ──────────────────────────
     let auth_routes = Router::new()
@@ -148,6 +149,15 @@ pub fn build_router(state: AppState) -> Router {
             middleware::auth_middleware,
         ));
 
+    // Statistiche (protette da JWT):
+    //   GET /api/stats/summary → totali, per sport e serie per periodo
+    let stats_routes = Router::new()
+        .route("/stats/summary", get(stats_controller::summary))
+        .route_layer(from_fn_with_state(
+            state.clone(),
+            middleware::auth_middleware,
+        ));
+
     // ── Tutte le route applicative vivono sotto /api ───────────────────────
     let api = Router::new()
         .route("/health", get(health_controller::health))
@@ -155,7 +165,8 @@ pub fn build_router(state: AppState) -> Router {
         .nest("/users", user_routes)
         .merge(coach_link_routes)
         .merge(import_routes)
-        .merge(activity_routes);
+        .merge(activity_routes)
+        .merge(stats_routes);
 
     let cors_origin = state.cors_origin.clone();
 

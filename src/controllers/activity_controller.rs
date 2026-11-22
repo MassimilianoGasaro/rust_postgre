@@ -10,15 +10,11 @@ use crate::dto::activity::{ActivityDto, ActivityPageDto, ListActivitiesQuery};
 use crate::errors::AppError;
 use crate::extractors::{AppPath, AppQuery};
 use crate::middleware::AuthUser;
+use crate::parsing::Sport;
 use crate::repositories::{activity_repository, user_repository};
 use crate::services::access_service;
 use crate::storage;
 use crate::AppState;
-
-/// Sport normalizzati ammessi nel filtro `sport` (vedi `parsing::Sport::as_str`).
-const SPORTS: [&str; 7] = [
-    "running", "cycling", "swimming", "walking", "hiking", "strength", "other",
-];
 
 const DEFAULT_PER_PAGE: i64 = 20;
 const MAX_PER_PAGE: i64 = 100;
@@ -47,7 +43,7 @@ pub async fn list(
         }
     }
     if let Some(sport) = query.sport.as_deref() {
-        if !SPORTS.contains(&sport) {
+        if Sport::from_str_opt(sport).is_none() {
             return Err(validation_error("sport non valido"));
         }
     }

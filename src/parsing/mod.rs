@@ -26,6 +26,23 @@ pub enum Sport {
 }
 
 impl Sport {
+    /// Tutti gli sport normalizzati, nell'ordine di dichiarazione.
+    pub const ALL: [Sport; 7] = [
+        Sport::Running,
+        Sport::Cycling,
+        Sport::Swimming,
+        Sport::Walking,
+        Sport::Hiking,
+        Sport::Strength,
+        Sport::Other,
+    ];
+
+    /// Inverso di `as_str`: `None` se il valore non è uno sport normalizzato
+    /// (il confronto è case-sensitive, come i valori salvati a DB).
+    pub fn from_str_opt(s: &str) -> Option<Sport> {
+        Sport::ALL.into_iter().find(|sport| sport.as_str() == s)
+    }
+
     /// Valore testuale salvato a DB e restituito dalle API.
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -216,6 +233,16 @@ mod tests {
         assert_eq!(FileFormat::Tcx.as_str(), "tcx");
         assert_eq!(ParseError::Empty.code(), "EMPTY_ACTIVITY");
         assert_eq!(ParseError::Malformed("x".into()).code(), "PARSE_ERROR");
+    }
+
+    #[test]
+    fn sport_all_round_trips_through_as_str() {
+        for sport in Sport::ALL {
+            assert_eq!(Sport::from_str_opt(sport.as_str()), Some(sport));
+        }
+        assert_eq!(Sport::from_str_opt("Running"), None);
+        assert_eq!(Sport::from_str_opt("yoga"), None);
+        assert_eq!(Sport::from_str_opt(""), None);
     }
 
     #[test]
