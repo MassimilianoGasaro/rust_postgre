@@ -12,7 +12,7 @@ use crate::middleware::AuthUser;
 use crate::parsing::Sport;
 use crate::repositories::stats_repository::{self, StatsFilter};
 use crate::repositories::user_repository;
-use crate::services::access_service;
+use crate::services::{access_service, date_bounds};
 
 /// Ampiezza massima dell'intervallo, in giorni (estremi inclusi).
 pub const MAX_RANGE_DAYS: i64 = 3660;
@@ -78,8 +78,9 @@ fn validation_error(message: &str) -> AppError {
 
 /// Valida la query string e risolve la granularità.
 ///
-/// Errori `400 VALIDATION_FAILED`: `from`/`to` mancanti, `from > to`,
-/// intervallo oltre `MAX_RANGE_DAYS`, sport o granularità non validi.
+/// Errori `400 VALIDATION_FAILED`: `from`/`to` mancanti o con anno fuori da
+/// 1900..=2200, `from > to`, intervallo oltre `MAX_RANGE_DAYS`, sport o
+/// granularità non validi.
 fn validate(query: StatsQuery) -> Result<SummaryRequest, AppError> {
     let from = query
         .from
@@ -87,6 +88,8 @@ fn validate(query: StatsQuery) -> Result<SummaryRequest, AppError> {
     let to = query
         .to
         .ok_or_else(|| validation_error("to è obbligatorio"))?;
+    date_bounds::check_year("from", Some(from))?;
+    date_bounds::check_year("to", Some(to))?;
     if from > to {
         return Err(validation_error("from non può essere successivo a to"));
     }

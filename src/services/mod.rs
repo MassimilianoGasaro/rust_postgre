@@ -12,6 +12,7 @@ pub mod activity_service;
 /// Questo li rende riutilizzabili e testabili indipendentemente.
 pub mod auth_service;
 pub mod coach_link_service;
+pub mod date_bounds;
 pub mod import_service;
 pub mod stats_service;
 pub mod user_service;

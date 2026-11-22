@@ -12,7 +12,7 @@ use crate::errors::AppError;
 use crate::middleware::AuthUser;
 use crate::parsing::Sport;
 use crate::repositories::{activity_repository, user_repository};
-use crate::services::access_service;
+use crate::services::{access_service, date_bounds};
 use crate::storage;
 
 const DEFAULT_PER_PAGE: i64 = 20;
@@ -25,8 +25,8 @@ fn validation_error(message: &str) -> AppError {
 /// Una pagina di attività dell'utente o di un atleta collegato (`athlete_id`).
 ///
 /// Errori `400 VALIDATION_FAILED`: `page < 1`, `per_page` fuori da 1..=100,
-/// `from > to`, sport non valido. Un input errato è 400 per chiunque, prima
-/// del controllo d'accesso.
+/// anno di `from`/`to` fuori da 1900..=2200, `from > to`, sport non valido.
+/// Un input errato è 400 per chiunque, prima del controllo d'accesso.
 pub async fn list(
     pool: &PgPool,
     auth: &AuthUser,
@@ -42,6 +42,8 @@ pub async fn list(
             "per_page deve essere compreso tra 1 e 100",
         ));
     }
+    date_bounds::check_year("from", query.from)?;
+    date_bounds::check_year("to", query.to)?;
     if let (Some(from), Some(to)) = (query.from, query.to)
         && from > to
     {

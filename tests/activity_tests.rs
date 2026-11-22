@@ -211,6 +211,30 @@ async fn list_filters_by_date_and_sport(pool: PgPool) {
     }
 }
 
+/// Date con anno fuori da 1900..=2200 → 400; gli estremi sono accettati.
+#[sqlx::test]
+async fn list_date_year_out_of_range_is_400(pool: PgPool) {
+    let app = common::test_app(pool);
+    let (_, token) = athlete(&app).await;
+
+    for bad in [
+        "from=1899-12-31",
+        "to=2201-01-01",
+        "from=0001-01-01&to=2026-01-01",
+        "from=2026-01-01&to=9999-12-31",
+    ] {
+        let (status, body) = get(&app, &token, &format!("/api/activities?{bad}")).await;
+        assert_validation_failed(status, &body);
+    }
+    let (status, body) = get(
+        &app,
+        &token,
+        "/api/activities?from=1900-01-01&to=2200-12-31",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+}
+
 #[sqlx::test]
 async fn list_paginates_with_total(pool: PgPool) {
     let app = common::test_app(pool);

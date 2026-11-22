@@ -544,6 +544,30 @@ async fn range_longer_than_3660_days_is_400(pool: PgPool) {
     assert_validation_failed(status, &body);
 }
 
+/// Date con anno fuori da 1900..=2200 → 400; gli estremi sono accettati.
+#[sqlx::test]
+async fn date_year_out_of_range_is_400(pool: PgPool) {
+    let app = common::test_app(pool);
+    let (_, token) = athlete(&app).await;
+
+    for bad in [
+        "from=1899-12-31&to=1900-01-10",
+        "from=2200-12-25&to=2201-01-01",
+        "from=0001-01-01&to=0001-01-02",
+        "from=9999-12-30&to=9999-12-31",
+    ] {
+        let (status, body) = get(&app, &token, &format!("/api/stats/summary?{bad}")).await;
+        assert_validation_failed(status, &body);
+    }
+    for ok in [
+        "from=1900-01-01&to=1900-01-10",
+        "from=2200-12-22&to=2200-12-31",
+    ] {
+        let (status, body) = get(&app, &token, &format!("/api/stats/summary?{ok}")).await;
+        assert_eq!(status, StatusCode::OK, "{ok}: {body}");
+    }
+}
+
 #[sqlx::test]
 async fn invalid_granularity_is_400(pool: PgPool) {
     let app = common::test_app(pool);
