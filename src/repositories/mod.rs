@@ -8,3 +8,4 @@
 /// - Il codice business rimane pulito
 
 pub mod user_repository;
+pub mod coach_link_repository;

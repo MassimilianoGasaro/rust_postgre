@@ -5,3 +5,4 @@
 /// NON vengono mai esposti direttamente nelle risposte HTTP — per quello ci sono i DTO.
 
 pub mod user;
+pub mod coach_link;

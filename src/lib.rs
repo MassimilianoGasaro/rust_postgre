@@ -25,7 +25,7 @@ use axum::{
 use sqlx::PgPool;
 use tower_http::cors::CorsLayer;
 
-use controllers::{auth_controller, health_controller, user_controller};
+use controllers::{auth_controller, coach_link_controller, health_controller, user_controller};
 
 /// AppState — stato condiviso tra tutti gli handler.
 ///
@@ -61,6 +61,7 @@ pub struct AppState {
 ///   /api/health → health check pubblico
 ///   /api/auth   → route pubbliche (no JWT richiesto)
 ///   /api/users  → route protette (JWT obbligatorio tramite middleware)
+///   /api/coach-links, /api/athletes → route protette (relazione allenatore-atleta)
 pub fn build_router(state: AppState) -> Router {
     // ── Route PUBBLICHE — accessibili senza token ──────────────────────────
     let auth_routes = Router::new()
@@ -88,11 +89,32 @@ pub fn build_router(state: AppState) -> Router {
             middleware::auth_middleware,
         ));
 
+    // Relazione allenatore-atleta (protette da JWT come /users):
+    //   POST /api/coach-links              → l'atleta richiede un coach
+    //   GET  /api/coach-links?status=      → i propri link / quelli ricevuti
+    //   POST /api/coach-links/:id/{accept,reject,cancel,revoke}
+    //   GET  /api/athletes                 → atleti collegati al coach
+    let coach_link_routes = Router::new()
+        .route(
+            "/coach-links",
+            get(coach_link_controller::list).post(coach_link_controller::create),
+        )
+        .route("/coach-links/:id/accept", post(coach_link_controller::accept))
+        .route("/coach-links/:id/reject", post(coach_link_controller::reject))
+        .route("/coach-links/:id/cancel", post(coach_link_controller::cancel))
+        .route("/coach-links/:id/revoke", post(coach_link_controller::revoke))
+        .route("/athletes", get(coach_link_controller::list_athletes))
+        .route_layer(from_fn_with_state(
+            state.clone(),
+            middleware::auth_middleware,
+        ));
+
     // ── Tutte le route applicative vivono sotto /api ───────────────────────
     let api = Router::new()
         .route("/health", get(health_controller::health))
         .nest("/auth", auth_routes)
-        .nest("/users", user_routes);
+        .nest("/users", user_routes)
+        .merge(coach_link_routes);
 
     let cors_origin = state.cors_origin.clone();
 

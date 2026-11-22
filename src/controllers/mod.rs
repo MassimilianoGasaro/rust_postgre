@@ -6,3 +6,4 @@
 pub mod auth_controller;
 pub mod health_controller;
 pub mod user_controller;
+pub mod coach_link_controller;

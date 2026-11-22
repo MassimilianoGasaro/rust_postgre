@@ -55,6 +55,28 @@ pub async fn find_by_email(pool: &PgPool, email: &str) -> Result<Option<User>, A
     Ok(user)
 }
 
+/// Cerca un utente per email OPPURE username. Ritorna None se non esiste.
+/// Usato per indicare un coach con un identificativo qualsiasi dei due.
+pub async fn find_by_email_or_username(
+    pool: &PgPool,
+    identifier: &str,
+) -> Result<Option<User>, AppError> {
+    let user = sqlx::query_as!(
+        User,
+        r#"
+        SELECT id, email, username, password_hash, role, is_active, created_at, updated_at
+        FROM users
+        WHERE email = $1 OR username = $1
+        LIMIT 1
+        "#,
+        identifier
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(user)
+}
+
 /// Cerca un utente per ID. Ritorna None se non esiste.
 pub async fn find_by_id(pool: &PgPool, id: i64) -> Result<Option<User>, AppError> {
     let user = sqlx::query_as!(
