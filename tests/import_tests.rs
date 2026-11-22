@@ -15,6 +15,8 @@ const RUN_GPX: &[u8] = include_bytes!("fixtures/run.gpx");
 const RIDE_TCX: &[u8] = include_bytes!("fixtures/ride.tcx");
 const RIDE_SAME_AS_TCX_GPX: &[u8] = include_bytes!("fixtures/ride_same_as_tcx.gpx");
 const MALFORMED_FIT: &[u8] = include_bytes!("fixtures/malformed.fit");
+const HIKE_GPX: &[u8] = include_bytes!("fixtures/hike.gpx");
+const HIKE_UNTYPED_GPX: &[u8] = include_bytes!("fixtures/hike_untyped.gpx");
 
 /// Registra un atleta e ne ritorna `(id, token)`.
 async fn athlete(app: &TestApp) -> (i64, String) {
@@ -117,6 +119,45 @@ async fn same_activity_fit_and_tcx_is_duplicate(pool: PgPool) {
         .await
         .unwrap();
     assert_eq!(count, 1);
+}
+
+/// Uno sport `other` (es. GPX senza `<type>`) è compatibile con qualsiasi sport:
+/// la stessa attività (inizio a +30 s) è un duplicato anche con etichette diverse.
+#[sqlx::test]
+async fn same_activity_with_unknown_sport_is_duplicate(pool: PgPool) {
+    let app = common::test_app(pool);
+    let (_, token) = athlete(&app).await;
+
+    let first = import(&app, &token, &[("hike.gpx", HIKE_GPX.to_vec())]).await;
+    let hike = item(&first, "hike.gpx");
+    assert_eq!(hike["status"], "imported", "{first}");
+    let hike_id = hike["activity_id"].as_i64().unwrap();
+
+    let second = import(
+        &app,
+        &token,
+        &[("hike_untyped.gpx", HIKE_UNTYPED_GPX.to_vec())],
+    )
+    .await;
+    let dup = item(&second, "hike_untyped.gpx");
+    assert_eq!(dup["status"], "duplicate", "{second}");
+    assert_eq!(dup["activity_id"].as_i64(), Some(hike_id));
+
+    // Ordine inverso (prima `other`, poi `hiking`), per un altro atleta
+    let (_, other) = app.register("other@example.com", "other", "athlete").await;
+    let first = import(
+        &app,
+        &other,
+        &[("hike_untyped.gpx", HIKE_UNTYPED_GPX.to_vec())],
+    )
+    .await;
+    let untyped_id = item(&first, "hike_untyped.gpx")["activity_id"]
+        .as_i64()
+        .unwrap();
+    let second = import(&app, &other, &[("hike.gpx", HIKE_GPX.to_vec())]).await;
+    let dup = item(&second, "hike.gpx");
+    assert_eq!(dup["status"], "duplicate", "{second}");
+    assert_eq!(dup["activity_id"].as_i64(), Some(untyped_id));
 }
 
 #[sqlx::test]

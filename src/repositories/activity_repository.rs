@@ -52,6 +52,10 @@ pub async fn find_by_hash<'e>(
 
 /// Attività dell'utente dello stesso sport iniziata entro ±`tolerance_s` secondi
 /// da `start` (la più vicina, se più d'una).
+///
+/// Lo sport `other` (sport non riconosciuto nel file) è compatibile con
+/// qualsiasi sport: la stessa attività esportata da fonti diverse può avere
+/// un'etichetta nota in un file e nessuna nell'altro.
 pub async fn find_overlapping<'e>(
     executor: impl PgExecutor<'e>,
     user_id: i64,
@@ -63,7 +67,8 @@ pub async fn find_overlapping<'e>(
     let id = sqlx::query_scalar!(
         r#"
         SELECT id FROM activities
-        WHERE user_id = $1 AND sport = $2
+        WHERE user_id = $1
+          AND (sport = $2 OR sport = 'other' OR $2 = 'other')
           AND start_time BETWEEN $3 AND $4
         ORDER BY ABS(EXTRACT(EPOCH FROM start_time - $5)), id
         LIMIT 1
