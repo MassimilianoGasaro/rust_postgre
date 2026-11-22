@@ -4,4 +4,5 @@
 /// un "gruppo" di endpoint logicamente correlati.
 
 pub mod auth_controller;
+pub mod health_controller;
 pub mod user_controller;

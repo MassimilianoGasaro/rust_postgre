@@ -5,7 +5,14 @@
 /// sparso ovunque nel codice, rendendo gli errori di config evidenti
 /// all'avvio dell'app (fail-fast).
 
+use std::path::PathBuf;
+
 use sqlx::{postgres::PgPoolOptions, PgPool};
+
+/// Legge una variabile opzionale: assente o vuota (es. `TLS_CERT_PATH=`) → None.
+fn optional_env(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|v| !v.trim().is_empty())
+}
 
 /// Contiene tutta la configurazione dell'app.
 /// Viene creata una sola volta in main() e poi condivisa via Arc<AppState>.
@@ -19,6 +26,14 @@ pub struct Config {
     pub tls_cert_path: Option<String>,
     /// Percorso della chiave privata TLS (PEM). Se assente, si usa una chiave self-signed.
     pub tls_key_path: Option<String>,
+    /// Origine consentita dal CORS (es. http://localhost:4200). Se assente, nessuna origine è abilitata.
+    pub cors_origin: Option<String>,
+    /// Directory in cui vengono salvati i file caricati.
+    pub upload_dir: PathBuf,
+    /// Dimensione massima del body di una richiesta di upload (byte).
+    pub max_upload_bytes: usize,
+    /// Dimensione massima di un singolo file caricato (byte).
+    pub max_file_bytes: usize,
 }
 
 impl Config {
@@ -45,8 +60,24 @@ impl Config {
                 .parse()
                 .expect("SERVER_PORT deve essere un numero"),
 
-            tls_cert_path: std::env::var("TLS_CERT_PATH").ok(),
-            tls_key_path: std::env::var("TLS_KEY_PATH").ok(),
+            tls_cert_path: optional_env("TLS_CERT_PATH"),
+            tls_key_path: optional_env("TLS_KEY_PATH"),
+
+            cors_origin: optional_env("CORS_ORIGIN"),
+
+            upload_dir: PathBuf::from(
+                std::env::var("UPLOAD_DIR").unwrap_or_else(|_| "./uploads".to_string()),
+            ),
+
+            max_upload_bytes: std::env::var("MAX_UPLOAD_BYTES")
+                .unwrap_or_else(|_| "1073741824".to_string())
+                .parse()
+                .expect("MAX_UPLOAD_BYTES deve essere un numero"),
+
+            max_file_bytes: std::env::var("MAX_FILE_BYTES")
+                .unwrap_or_else(|_| "52428800".to_string())
+                .parse()
+                .expect("MAX_FILE_BYTES deve essere un numero"),
         }
     }
 

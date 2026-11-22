@@ -4,47 +4,14 @@
 /// 1. Caricare le variabili d'ambiente dal file .env
 /// 2. Inizializzare il sistema di logging (tracing)
 /// 3. Leggere la configurazione (config.rs)
-/// 4. Creare il pool di connessioni al DB
+/// 4. Creare il pool di connessioni al DB e applicare le migration
 /// 5. Costruire l'AppState condiviso
-/// 6. Definire il Router con tutti gli endpoint
+/// 6. Costruire il Router (vedi lib.rs → build_router)
 /// 7. Avviare il server TCP in ascolto
 
-mod config;
-mod controllers;
-mod dto;
-mod errors;
-mod middleware;
-mod models;
-mod repositories;
-mod services;
-
-use axum::{
-    middleware::from_fn_with_state,
-    routing::{delete, get, patch, post},
-    Router,
-};
 use axum_server::tls_rustls::RustlsConfig;
-use sqlx::PgPool;
 
-use controllers::{auth_controller, user_controller};
-
-/// AppState — stato condiviso tra tutti gli handler.
-///
-/// In Axum lo stato viene clonato per ogni request, quindi deve
-/// implementare Clone. Usiamo Arc<PgPool> perché il pool è già
-/// thread-safe internamente, ma Arc ci evita copie costose.
-///
-/// Tutti gli handler ricevono questo stato con:
-///   `State(state): State<AppState>`
-#[derive(Clone)]
-pub struct AppState {
-    /// Pool di connessioni a PostgreSQL — thread-safe, condiviso
-    pub pool: PgPool,
-    /// Segreto per firmare/verificare i JWT
-    pub jwt_secret: String,
-    /// Ore di validità del token JWT
-    pub jwt_expiration_hours: i64,
-}
+use rust_postgre::{build_router, config, AppState};
 
 #[tokio::main]
 async fn main() {
@@ -60,9 +27,20 @@ async fn main() {
     // 3. Legge la configurazione dalle variabili d'ambiente
     let config = config::Config::from_env();
 
-    // 4. Crea il pool di connessioni al DB
+    // 4. Crea il pool di connessioni al DB e applica le migration pendenti
     let pool = config::create_db_pool(&config.database_url).await;
     tracing::info!("Connesso a PostgreSQL");
+
+    sqlx::migrate!()
+        .run(&pool)
+        .await
+        .expect("Impossibile applicare le migration");
+    tracing::info!("Migration applicate");
+
+    // Assicura che la directory degli upload esista
+    tokio::fs::create_dir_all(&config.upload_dir)
+        .await
+        .expect("Impossibile creare la directory di upload");
 
     // Estrai prima i dati che servono dopo, così non ci sono problemi di ownership
     let address: std::net::SocketAddr = config
@@ -76,6 +54,10 @@ async fn main() {
         pool,
         jwt_secret: config.jwt_secret,
         jwt_expiration_hours: config.jwt_expiration_hours,
+        upload_dir: config.upload_dir,
+        max_upload_bytes: config.max_upload_bytes,
+        max_file_bytes: config.max_file_bytes,
+        cors_origin: config.cors_origin,
     };
 
     // 6. Costruisce il Router
@@ -115,47 +97,6 @@ async fn build_tls_config(config: &config::Config) -> RustlsConfig {
                 .expect("Impossibile configurare TLS con certificato self-signed")
         }
     }
-}
-
-/// Costruisce e restituisce il Router dell'applicazione.
-///
-/// Separare questa funzione da main() ci permette di
-/// riutilizzarla nei test di integrazione.
-///
-/// Struttura delle route:
-///   /auth  → route pubbliche (no JWT richiesto)
-///   /users → route protette (JWT obbligatorio tramite middleware)
-fn build_router(state: AppState) -> Router {
-    // ── Route PUBBLICHE — accessibili senza token ──────────────────────────
-    let auth_routes = Router::new()
-        .route("/register", post(auth_controller::register))
-        // POST /auth/register → registra un nuovo utente
-        .route("/login", post(auth_controller::login));
-        // POST /auth/login → autentica e restituisce il JWT
-
-    // ── Route PROTETTE — richiedono JWT valido nell'header ─────────────────
-    let user_routes = Router::new()
-        .route("/", get(user_controller::list))
-        // GET /users → lista paginata utenti
-        .route("/:id", get(user_controller::get_by_id))
-        // GET /users/:id → singolo utente
-        .route("/:id", patch(user_controller::update))
-        // PATCH /users/:id → aggiornamento parziale
-        .route("/:id", delete(user_controller::delete))
-        // DELETE /users/:id → elimina utente
-        //
-        // Applica il middleware JWT a TUTTE le route di questo gruppo.
-        // Il middleware viene eseguito PRIMA dell'handler.
-        .route_layer(from_fn_with_state(
-            state.clone(),
-            middleware::auth_middleware,
-        ));
-
-    // ── Router principale — unisce tutto con il prefix ─────────────────────
-    Router::new()
-        .nest("/auth", auth_routes)  // /auth/register, /auth/login
-        .nest("/users", user_routes) // /users, /users/:id
-        .with_state(state) // inietta AppState in tutti gli handler
 }
 
 /// Inizializza il sistema di logging in base all'ambiente.

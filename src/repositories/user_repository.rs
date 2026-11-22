@@ -10,7 +10,7 @@
 use sqlx::PgPool;
 
 use crate::errors::AppError;
-use crate::models::user::{User, UserWithInfo};
+use crate::models::user::User;
 
 /// Cerca un utente per email. Ritorna None se non esiste.
 /// Usato durante il login per trovare l'utente da autenticare.
@@ -20,7 +20,7 @@ pub async fn find_by_email(pool: &PgPool, email: &str) -> Result<Option<User>, A
     let user = sqlx::query_as!(
         User,
         r#"
-        SELECT id, email, username, password_hash, is_active, created_at, updated_at
+        SELECT id, email, username, password_hash, role, is_active, created_at, updated_at
         FROM users
         WHERE email = $1
         "#,
@@ -38,7 +38,7 @@ pub async fn find_by_id(pool: &PgPool, id: i64) -> Result<Option<User>, AppError
     let user = sqlx::query_as!(
         User,
         r#"
-        SELECT id, email, username, password_hash, is_active, created_at, updated_at
+        SELECT id, email, username, password_hash, role, is_active, created_at, updated_at
         FROM users
         WHERE id = $1
         "#,
@@ -50,28 +50,9 @@ pub async fn find_by_id(pool: &PgPool, id: i64) -> Result<Option<User>, AppError
     Ok(user)
 }
 
-/// Cerca un utente per ID includendo i dati del suo profilo (users_info).
-/// Usa LEFT JOIN: se il profilo non esiste ancora, `bio` sarà None.
-pub async fn find_by_id_with_info(pool: &PgPool, id: i64) -> Result<Option<UserWithInfo>, AppError> {
-    let user = sqlx::query_as!(
-        UserWithInfo,
-        r#"
-        SELECT u.id, u.email, u.username, u.password_hash, u.is_active, u.created_at, u.updated_at,
-               ui.bio AS "bio: Option<String>"
-        FROM users u
-        LEFT JOIN users_info ui ON ui.user_id = u.id
-        WHERE u.id = $1
-        "#,
-        id
-    )
-    .fetch_optional(pool)
-    .await?;
-
-    Ok(user)
-}
-
 /// Crea un nuovo utente nel DB.
 /// Riceve già la password hashata — l'hash viene fatto nel service, NON qui.
+/// TODO(Task 2): il ruolo è fisso `athlete` finché la registrazione non lo riceve in input.
 pub async fn create(
     pool: &PgPool,
     email: &str,
@@ -82,9 +63,9 @@ pub async fn create(
     let user = sqlx::query_as!(
         User,
         r#"
-        INSERT INTO users (email, username, password_hash, is_active, created_at, updated_at)
-        VALUES ($1, $2, $3, true, NOW(), NOW())
-        RETURNING id, email, username, password_hash, is_active, created_at, updated_at
+        INSERT INTO users (email, username, password_hash, role, is_active, created_at, updated_at)
+        VALUES ($1, $2, $3, 'athlete', true, NOW(), NOW())
+        RETURNING id, email, username, password_hash, role, is_active, created_at, updated_at
         "#,
         email,
         username,
@@ -104,7 +85,7 @@ pub async fn find_all(pool: &PgPool, page: i64, per_page: i64) -> Result<Vec<Use
     let users = sqlx::query_as!(
         User,
         r#"
-        SELECT id, email, username, password_hash, is_active, created_at, updated_at
+        SELECT id, email, username, password_hash, role, is_active, created_at, updated_at
         FROM users
         ORDER BY created_at DESC
         LIMIT $1 OFFSET $2
@@ -148,7 +129,7 @@ pub async fn update(
             password_hash = COALESCE($4, password_hash),
             updated_at   = NOW()
         WHERE id = $1
-        RETURNING id, email, username, password_hash, is_active, created_at, updated_at
+        RETURNING id, email, username, password_hash, role, is_active, created_at, updated_at
         "#,
         id,
         email as Option<&str>,

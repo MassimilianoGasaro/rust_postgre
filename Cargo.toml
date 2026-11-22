@@ -5,14 +5,14 @@ edition = "2024"
 
 [dependencies]
 # Web framework
-axum = { version = "0.7", features = ["macros"] }
+axum = { version = "0.7", features = ["macros", "multipart"] }
 axum-server = { version = "0.7", features = ["tls-rustls"] }
 
 # Generazione certificati self-signed (solo sviluppo)
 rcgen = "0.13"
 
 # Database
-sqlx = { version = "0.8", features = ["postgres", "runtime-tokio", "macros", "chrono"] }
+sqlx = { version = "0.8", features = ["postgres", "runtime-tokio", "macros", "chrono", "migrate"] }
 
 # Runtime asincrono
 tokio = { version = "1", features = ["full"] }
@@ -40,3 +40,14 @@ thiserror = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-appender = "0.2"
+
+# CORS (consente l'origine del client Angular)
+tower-http = { version = "0.6", features = ["cors"] }
+
+[dev-dependencies]
+# Invio di richieste al Router senza aprire socket (ServiceExt::oneshot)
+tower = { version = "0.5", features = ["util"] }
+# Lettura del corpo delle risposte nei test
+http-body-util = "0.1"
+# Directory temporanea per gli upload nei test
+tempfile = "3"
