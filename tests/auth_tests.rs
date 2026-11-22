@@ -209,3 +209,45 @@ async fn login_disabled_account_is_401_account_disabled(pool: PgPool) {
     let (_, body) = login("sbagliata1").await;
     assert_eq!(body["code"], "INVALID_CREDENTIALS");
 }
+
+/// Il token di un utente eliminato non dà più accesso: 401, mai 500.
+#[sqlx::test]
+async fn deleted_user_token_is_401(pool: PgPool) {
+    let app = common::test_app(pool);
+    let (id, token) = app.register("a@example.com", "atleta", "athlete").await;
+    sqlx::query("DELETE FROM users WHERE id = $1")
+        .bind(id)
+        .execute(&app.pool)
+        .await
+        .unwrap();
+
+    let (status, body) = app
+        .request(Method::GET, "/api/users/me", Some(&token), None)
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
+    assert_eq!(body["code"], "UNAUTHORIZED");
+
+    let (status, body) = app
+        .upload(&token, &[("run.gpx", b"<gpx/>".to_vec())])
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
+    assert_eq!(body["code"], "UNAUTHORIZED");
+}
+
+/// Il token di un utente disattivato non dà più accesso.
+#[sqlx::test]
+async fn inactive_user_token_is_401(pool: PgPool) {
+    let app = common::test_app(pool);
+    let (id, token) = app.register("a@example.com", "atleta", "athlete").await;
+    sqlx::query("UPDATE users SET is_active = false WHERE id = $1")
+        .bind(id)
+        .execute(&app.pool)
+        .await
+        .unwrap();
+
+    for uri in ["/api/users/me", "/api/activities", "/api/imports"] {
+        let (status, body) = app.request(Method::GET, uri, Some(&token), None).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{uri}: {body}");
+        assert_eq!(body["code"], "UNAUTHORIZED", "{uri}");
+    }
+}

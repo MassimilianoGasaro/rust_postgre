@@ -97,6 +97,15 @@ pub async fn find_by_id(pool: &PgPool, id: i64) -> Result<Option<User>, AppError
     Ok(user)
 }
 
+/// Stato `is_active` dell'utente; `None` se l'utente non esiste.
+pub async fn find_is_active(pool: &PgPool, id: i64) -> Result<Option<bool>, AppError> {
+    let active = sqlx::query_scalar!("SELECT is_active FROM users WHERE id = $1", id)
+        .fetch_optional(pool)
+        .await?;
+
+    Ok(active)
+}
+
 /// Crea un nuovo utente nel DB (dentro la transazione del chiamante).
 /// Riceve già la password hashata — l'hash viene fatto nel service, NON qui.
 /// Email/username duplicati → `409 EMAIL_TAKEN` / `409 USERNAME_TAKEN`.

@@ -36,6 +36,7 @@ use crate::models::import::ItemStatus;
 use crate::parsing::archive::{ArchiveLimits, Expanded, InputFile, expand_upload};
 use crate::parsing::parse;
 use crate::repositories::{activity_repository, import_repository};
+use crate::services::activity_service;
 use crate::storage;
 
 /// Tolleranza sull'orario di inizio per considerare due attività la stessa.
@@ -366,7 +367,7 @@ async fn import_file(ctx: &ImportContext, file: InputFile) -> Result<Outcome, Ap
 
     // Con il lock la violazione di unicità non dovrebbe verificarsi; se accade
     // comunque (es. inserimento fuori da questo flusso) è un duplicato.
-    let outcome = match activity_repository::insert(
+    let inserted = match activity_repository::insert(
         &mut *tx,
         ctx.user_id,
         &activity,
@@ -376,19 +377,28 @@ async fn import_file(ctx: &ImportContext, file: InputFile) -> Result<Outcome, Ap
     )
     .await
     {
-        Ok(id) => Outcome::Imported(id),
+        Ok(id) => tx.commit().await.map(|()| id).map_err(AppError::from),
         Err(e) if is_duplicate_file(&e) => {
-            // La transazione è annullata dall'errore: si rilegge fuori
+            // La transazione è annullata dall'errore: si rilegge fuori.
+            // Il file salvato è quello dell'attività esistente (stesso hash).
             drop(tx);
             return activity_repository::find_by_hash(&ctx.pool, ctx.user_id, &sha)
                 .await?
                 .map(Outcome::Duplicate)
                 .ok_or_else(|| AppError::Internal("attività duplicata non trovata".to_string()));
         }
-        Err(e) => return Err(e),
+        Err(e) => Err(e),
     };
-    tx.commit().await?;
-    Ok(outcome)
+
+    match inserted {
+        Ok(id) => Ok(Outcome::Imported(id)),
+        Err(e) => {
+            // Inserimento o commit falliti: il file appena salvato non deve restare orfano
+            activity_service::remove_file_if_unreferenced(&ctx.pool, &ctx.upload_dir, &file_path)
+                .await;
+            Err(e)
+        }
+    }
 }
 
 /// `true` se l'errore è la violazione di unicità (utente, SHA-256) di `insert`.
@@ -406,6 +416,7 @@ mod tests {
     use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
     use super::*;
+    use crate::parsing::FileFormat;
 
     /// Crea un utente e un import `processing`; ritorna `(user_id, import_id)`.
     async fn processing_import(pool: &PgPool) -> (i64, i64) {
@@ -482,6 +493,33 @@ mod tests {
             .unwrap();
         assert_eq!(items[0].status, "failed");
         assert_eq!(items[0].error_code.as_deref(), Some("INTERNAL"));
+    }
+
+    /// Se l'inserimento fallisce il file appena salvato viene rimosso.
+    #[sqlx::test]
+    async fn failed_insert_removes_saved_file(pool: PgPool) {
+        let upload_dir = tempfile::tempdir().unwrap();
+        // Utente inesistente: l'inserimento viola la foreign key
+        let ctx = ImportContext {
+            pool: pool.clone(),
+            upload_dir: upload_dir.path().to_path_buf(),
+            limits: ArchiveLimits::default(),
+            user_id: 999,
+            import_id: 1,
+        };
+        let bytes = include_bytes!("../../tests/fixtures/run.gpx").to_vec();
+        let file = InputFile {
+            filename: "run.gpx".into(),
+            format: FileFormat::Gpx,
+            bytes,
+        };
+
+        assert!(import_file(&ctx, file).await.is_err());
+        let user_dir = upload_dir.path().join("999");
+        let left: Vec<_> = std::fs::read_dir(&user_dir)
+            .map(|entries| entries.map(|e| e.unwrap().path()).collect())
+            .unwrap_or_default();
+        assert!(left.is_empty(), "file rimasti: {left:?}");
     }
 
     #[tokio::test]

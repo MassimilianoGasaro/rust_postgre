@@ -1,4 +1,5 @@
 pub mod access_service;
+pub mod activity_service;
 /// services/mod.rs — Entry point del layer service
 ///
 /// I service contengono la LOGICA DI BUSINESS dell'applicazione:

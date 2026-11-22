@@ -4,12 +4,11 @@
 /// Questo middleware:
 /// 1. Legge l'header `Authorization: Bearer <token>`
 /// 2. Valida il JWT tramite auth_service::validate_jwt
-/// 3. Se valido: inietta i Claims nell'handler via Extension
-/// 4. Se non valido: blocca la request con 401 Unauthorized
+/// 3. Verifica a DB che l'utente esista ancora e sia attivo
+/// 4. Se valido: inietta i Claims nell'handler via Extension
+/// 5. Altrimenti: blocca la request con 401 Unauthorized
 ///
-/// Gli handler protetti ricevono i claims così:
-///   `Extension(claims): Extension<Claims>`
-/// e sanno chi è l'utente autenticato senza fare query al DB.
+/// Gli handler protetti ricevono l'utente come `AuthUser`, ricavato dai claims.
 use axum::{
     async_trait,
     extract::{FromRequestParts, Request, State},
@@ -47,6 +46,10 @@ pub async fn auth_middleware(
 
     // Valida il JWT — se scaduto o manomesso → AppError::Unauthorized
     let claims = auth_service::validate_jwt(token, &state.jwt_secret)?;
+
+    // Un token resta valido fino alla scadenza: l'account potrebbe nel
+    // frattempo essere stato eliminato o disattivato
+    auth_service::ensure_active_user(&state.pool, claims.sub).await?;
 
     // Inserisce i claims nella request come Extension
     // Gli handler possono estrarli con: Extension(claims): Extension<Claims>

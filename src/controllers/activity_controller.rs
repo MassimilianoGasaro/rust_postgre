@@ -12,8 +12,7 @@ use crate::extractors::{AppPath, AppQuery};
 use crate::middleware::AuthUser;
 use crate::parsing::Sport;
 use crate::repositories::{activity_repository, user_repository};
-use crate::services::access_service;
-use crate::storage;
+use crate::services::{access_service, activity_service};
 
 const DEFAULT_PER_PAGE: i64 = 20;
 const MAX_PER_PAGE: i64 = 100;
@@ -86,15 +85,8 @@ pub async fn delete(
         .ok_or_else(|| AppError::NotFound(format!("Attività {id} non trovata")))?;
 
     // Il file si rimuove solo se nessun'altra attività lo referenzia
-    match activity_repository::file_path_in_use(&state.pool, &file_path).await {
-        Ok(false) => {
-            if let Err(e) = storage::remove(&state.upload_dir, &file_path).await {
-                tracing::warn!("Rimozione del file {file_path} fallita: {e}");
-            }
-        }
-        Ok(true) => {}
-        Err(e) => tracing::warn!("Controllo riferimenti al file {file_path} fallito: {e}"),
-    }
+    activity_service::remove_file_if_unreferenced(&state.pool, &state.upload_dir, &file_path)
+        .await;
 
     Ok(StatusCode::NO_CONTENT)
 }

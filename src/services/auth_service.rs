@@ -198,6 +198,18 @@ pub fn validate_jwt(token: &str, jwt_secret: &str) -> Result<Claims, AppError> {
     Ok(token_data.claims)
 }
 
+/// Verifica che l'utente del token esista ancora e sia attivo.
+///
+/// Un account eliminato o disattivato dopo l'emissione del token → `401 UNAUTHORIZED`.
+pub async fn ensure_active_user(pool: &PgPool, user_id: i64) -> Result<(), AppError> {
+    match user_repository::find_is_active(pool, user_id).await? {
+        Some(true) => Ok(()),
+        _ => Err(AppError::Unauthorized(
+            "Utente non trovato o disattivato".to_string(),
+        )),
+    }
+}
+
 /// Genera un JWT firmato con HMAC-SHA256.
 ///
 /// Il token contiene:
