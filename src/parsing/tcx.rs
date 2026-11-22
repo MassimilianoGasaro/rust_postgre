@@ -11,8 +11,8 @@ use quick_xml::Reader;
 
 use super::metrics::elevation_gain;
 use super::{
-    check_depth, finite_number, local_name, parse_time, rounded_mean, seconds_to_i32, ParseError,
-    ParsedActivity, Sport,
+    check_depth, finite_number, local_name, parse_time, rounded_mean, seconds_to_i32,
+    weighted_mean, ParseError, ParsedActivity, Sport,
 };
 
 /// Dati di un giro (`<Lap>`).
@@ -140,19 +140,6 @@ fn sport_from_attr(raw: &str) -> Sport {
         "Running" => Sport::Running,
         "Biking" => Sport::Cycling,
         _ => Sport::Other,
-    }
-}
-
-/// Media pesata; se i pesi sono tutti nulli ripiega sulla media semplice.
-fn weighted_mean(values: &[(f64, f64)]) -> Option<f64> {
-    if values.is_empty() {
-        return None;
-    }
-    let total_weight: f64 = values.iter().map(|(_, w)| w).sum();
-    if total_weight > 0.0 {
-        Some(values.iter().map(|(v, w)| v * w).sum::<f64>() / total_weight)
-    } else {
-        Some(values.iter().map(|(v, _)| v).sum::<f64>() / values.len() as f64)
     }
 }
 

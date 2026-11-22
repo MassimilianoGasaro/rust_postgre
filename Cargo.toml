@@ -47,6 +47,12 @@ tower-http = { version = "0.6", features = ["cors"] }
 # Parsing XML in streaming (GPX, TCX)
 quick-xml = "0.37"
 
+# Parsing FIT (Garmin, Coros)
+fitparser = "0.12"
+
+# Lettura di archivi ZIP (test sui file reali, upload nel Task 6)
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
 [dev-dependencies]
 # Invio di richieste al Router senza aprire socket (ServiceExt::oneshot)
 tower = { version = "0.5", features = ["util"] }

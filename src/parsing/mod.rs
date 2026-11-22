@@ -1,8 +1,9 @@
-//! parsing — Lettura dei file di attività (GPX, TCX; FIT nel Task 5)
+//! parsing — Lettura dei file di attività (FIT, GPX, TCX)
 //!
 //! Modulo puro: nessun accesso a DB o HTTP. Ogni formato produce una
 //! `ParsedActivity` con le metriche aggregate dell'attività.
 
+pub mod fit;
 pub mod gpx;
 pub mod metrics;
 pub mod tcx;
@@ -131,7 +132,7 @@ pub fn parse(format: FileFormat, bytes: &[u8]) -> Result<ParsedActivity, ParseEr
     match format {
         FileFormat::Gpx => gpx::parse(bytes),
         FileFormat::Tcx => tcx::parse(bytes),
-        FileFormat::Fit => Err(ParseError::Malformed("fit not yet supported".into())),
+        FileFormat::Fit => fit::parse(bytes),
     }
 }
 
@@ -172,6 +173,19 @@ pub(crate) fn finite_number(s: &str) -> Option<f64> {
 /// Local name (senza prefisso di namespace) di un elemento XML.
 pub(crate) fn local_name(raw: quick_xml::name::LocalName<'_>) -> String {
     String::from_utf8_lossy(raw.as_ref()).into_owned()
+}
+
+/// Media pesata; se i pesi sono tutti nulli ripiega sulla media semplice.
+pub(crate) fn weighted_mean(values: &[(f64, f64)]) -> Option<f64> {
+    if values.is_empty() {
+        return None;
+    }
+    let total_weight: f64 = values.iter().map(|(_, w)| w).sum();
+    if total_weight > 0.0 {
+        Some(values.iter().map(|(v, w)| v * w).sum::<f64>() / total_weight)
+    } else {
+        Some(values.iter().map(|(v, _)| v).sum::<f64>() / values.len() as f64)
+    }
 }
 
 /// Media aritmetica arrotondata all'intero più vicino (None se vuota).
