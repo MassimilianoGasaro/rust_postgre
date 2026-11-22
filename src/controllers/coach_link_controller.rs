@@ -10,7 +10,7 @@
 ///   GET  /athletes                 → gli atleti collegati al coach
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::State,
     http::StatusCode,
     Json,
 };
@@ -19,7 +19,7 @@ use crate::dto::coach_link::{
     CoachLinkDto, CreateCoachLinkRequest, LinkedAthleteDto, ListCoachLinksQuery,
 };
 use crate::errors::AppError;
-use crate::extractors::AppJson;
+use crate::extractors::{AppJson, AppPath, AppQuery};
 use crate::middleware::AuthUser;
 use crate::services::coach_link_service::{self, LinkAction};
 use crate::AppState;
@@ -40,7 +40,7 @@ pub async fn create(
 pub async fn list(
     State(state): State<AppState>,
     auth: AuthUser,
-    Query(query): Query<ListCoachLinksQuery>,
+    AppQuery(query): AppQuery<ListCoachLinksQuery>,
 ) -> Result<Json<Vec<CoachLinkDto>>, AppError> {
     let links = coach_link_service::list_links(&state.pool, &auth, query.status.as_deref()).await?;
     Ok(Json(links))
@@ -50,7 +50,7 @@ pub async fn list(
 pub async fn accept(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(id): Path<i64>,
+    AppPath(id): AppPath<i64>,
 ) -> Result<Json<CoachLinkDto>, AppError> {
     act(state, auth, id, LinkAction::Accept).await
 }
@@ -59,7 +59,7 @@ pub async fn accept(
 pub async fn reject(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(id): Path<i64>,
+    AppPath(id): AppPath<i64>,
 ) -> Result<Json<CoachLinkDto>, AppError> {
     act(state, auth, id, LinkAction::Reject).await
 }
@@ -68,7 +68,7 @@ pub async fn reject(
 pub async fn cancel(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(id): Path<i64>,
+    AppPath(id): AppPath<i64>,
 ) -> Result<Json<CoachLinkDto>, AppError> {
     act(state, auth, id, LinkAction::Cancel).await
 }
@@ -77,7 +77,7 @@ pub async fn cancel(
 pub async fn revoke(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(id): Path<i64>,
+    AppPath(id): AppPath<i64>,
 ) -> Result<Json<CoachLinkDto>, AppError> {
     act(state, auth, id, LinkAction::Revoke).await
 }

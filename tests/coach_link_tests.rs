@@ -513,3 +513,44 @@ async fn coach_loses_access_after_revoke(pool: PgPool) {
 
     assert_denied(access_service::resolve_target(&pool, &me, Some(athlete_id)).await);
 }
+
+// ── Parametri di path/query malformati ───────────────────────────────────
+
+#[sqlx::test]
+async fn malformed_path_id_is_400_validation_failed(pool: PgPool) {
+    let app = common::test_app(pool);
+    let (_, coach) = app.register("c@example.com", "allenatore", "coach").await;
+
+    for id in ["abc", "99999999999999999999"] {
+        let (status, body) = app
+            .request(
+                Method::POST,
+                &format!("/api/coach-links/{id}/accept"),
+                Some(&coach),
+                None,
+            )
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "id={id}");
+        assert_eq!(body["code"], "VALIDATION_FAILED");
+        assert_eq!(body["status"], 400);
+    }
+}
+
+#[sqlx::test]
+async fn malformed_query_is_400_validation_failed(pool: PgPool) {
+    let app = common::test_app(pool);
+    let (_, athlete) = app.register("a@example.com", "atleta", "athlete").await;
+
+    // Parametro ripetuto: non deserializzabile in `Option<String>`.
+    let (status, body) = app
+        .request(
+            Method::GET,
+            "/api/coach-links?status=pending&status=active",
+            Some(&athlete),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["code"], "VALIDATION_FAILED");
+    assert_eq!(body["status"], 400);
+}
