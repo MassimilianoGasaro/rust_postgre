@@ -3,6 +3,7 @@
 //! Modulo puro: nessun accesso a DB o HTTP. Ogni formato produce una
 //! `ParsedActivity` con le metriche aggregate dell'attività.
 
+pub mod archive;
 pub mod fit;
 pub mod gpx;
 pub mod metrics;

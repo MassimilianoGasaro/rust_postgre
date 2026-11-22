@@ -14,6 +14,7 @@ pub mod models;
 pub mod parsing;
 pub mod repositories;
 pub mod services;
+pub mod storage;
 
 use std::path::PathBuf;
 

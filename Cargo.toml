@@ -53,6 +53,10 @@ fitparser = "0.12"
 # Lettura di archivi ZIP (test sui file reali, upload nel Task 6)
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
+# Hash SHA-256 dei file originali (deduplica e nome di storage)
+sha2 = "0.10"
+hex = "0.4"
+
 [dev-dependencies]
 # Invio di richieste al Router senza aprire socket (ServiceExt::oneshot)
 tower = { version = "0.5", features = ["util"] }
