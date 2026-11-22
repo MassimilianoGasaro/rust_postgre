@@ -130,7 +130,26 @@ pub async fn finish_item(
 }
 
 /// Chiude l'import come `completed` e valorizza `finished_at`.
+///
+/// Nella stessa transazione gli item ancora `pending` di questo import (esito
+/// non registrato per un errore) diventano `failed`/`INTERNAL`: un import
+/// `completed` non ha mai item `pending`.
 pub async fn complete(pool: &PgPool, import_id: i64) -> Result<(), AppError> {
+    let mut tx = pool.begin().await?;
+
+    sqlx::query!(
+        r#"
+        UPDATE import_items
+        SET status = $2, error_code = 'INTERNAL'
+        WHERE import_id = $1 AND status = $3
+        "#,
+        import_id,
+        ItemStatus::Failed.as_str(),
+        ItemStatus::Pending.as_str()
+    )
+    .execute(&mut *tx)
+    .await?;
+
     sqlx::query!(
         r#"
         UPDATE imports
@@ -140,9 +159,10 @@ pub async fn complete(pool: &PgPool, import_id: i64) -> Result<(), AppError> {
         import_id,
         ImportStatus::Completed.as_str()
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
+    tx.commit().await?;
     Ok(())
 }
 

@@ -13,8 +13,13 @@
 /// 3. alla fine l'import diventa `completed` e i file temporanei sono rimossi.
 ///
 /// Un errore inatteso su un elemento lo marca `failed`/`INTERNAL` e si prosegue.
+/// Un supervisore chiude l'import in ogni caso (anche se l'elaborazione va in
+/// panic), con alcuni tentativi: un import non resta mai `processing` finché
+/// il server è attivo.
 
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use sqlx::PgPool;
 use tempfile::TempPath;
@@ -37,6 +42,12 @@ const MAX_FILENAME_CHARS: usize = 255;
 
 /// Numero di import restituiti da `list`.
 const LIST_LIMIT: i64 = 20;
+
+/// Tentativi per le scritture a DB che registrano l'esito (item, chiusura import).
+const WRITE_ATTEMPTS: u32 = 3;
+
+/// Attesa prima del secondo tentativo; raddoppia a ogni tentativo successivo.
+const RETRY_BASE_DELAY: Duration = Duration::from_millis(100);
 
 /// Elementi espansi in attesa di elaborazione: limita la memoria usata
 /// quando l'espansione è più veloce delle scritture a DB.
@@ -85,7 +96,7 @@ pub async fn start_import(
         user_id,
         import_id: import.id,
     };
-    tokio::spawn(run_import(ctx, files));
+    tokio::spawn(supervise(pool.clone(), import.id, run_import(ctx, files)));
 
     Ok(ImportDto::with_items(import, Vec::new()))
 }
@@ -105,14 +116,48 @@ pub async fn list_imports(pool: &PgPool, auth: &AuthUser) -> Result<Vec<ImportDt
     Ok(imports.into_iter().map(ImportDto::from).collect())
 }
 
-/// Elabora i file caricati uno alla volta, poi chiude l'import.
+/// Esegue `work` in un task separato e, comunque termini (anche in panic),
+/// chiude l'import come `completed`.
+async fn supervise<F>(pool: PgPool, import_id: i64, work: F)
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    if let Err(e) = tokio::spawn(work).await {
+        tracing::error!(import_id, "elaborazione dell'import interrotta: {e}");
+    }
+
+    let completed = with_retry(|| import_repository::complete(&pool, import_id)).await;
+    if let Err(e) = completed {
+        tracing::error!(import_id, "chiusura import fallita: {e}");
+    }
+}
+
+/// Elabora i file caricati uno alla volta (la chiusura spetta a `supervise`).
 async fn run_import(ctx: ImportContext, files: Vec<UploadedFile>) {
     for file in files {
         process_upload(&ctx, file).await;
     }
+}
 
-    if let Err(e) = import_repository::complete(&ctx.pool, ctx.import_id).await {
-        tracing::error!(import_id = ctx.import_id, "chiusura import fallita: {e}");
+/// Ripete un'operazione a DB fino a `WRITE_ATTEMPTS` volte, con attesa crescente.
+async fn with_retry<T, F, Fut>(mut op: F) -> Result<T, AppError>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T, AppError>>,
+{
+    let mut delay = RETRY_BASE_DELAY;
+    let mut attempt = 1;
+    loop {
+        match op().await {
+            Ok(value) => return Ok(value),
+            Err(e) if attempt >= WRITE_ATTEMPTS => return Err(e),
+            Err(e) => {
+                tracing::warn!(attempt, "scrittura a DB fallita, nuovo tentativo: {e}");
+                tokio::time::sleep(delay).await;
+                delay *= 2;
+                attempt += 1;
+            }
+        }
     }
 }
 
@@ -155,13 +200,16 @@ async fn process_item(ctx: &ImportContext, item: Expanded) {
         Expanded::File(file) => file,
     };
 
-    let item_id = match import_repository::insert_item(
-        &ctx.pool,
-        ctx.import_id,
-        &truncate_filename(&file.filename),
-        ItemStatus::Pending,
-        None,
-    )
+    let filename = truncate_filename(&file.filename);
+    let item_id = match with_retry(|| {
+        import_repository::insert_item(
+            &ctx.pool,
+            ctx.import_id,
+            &filename,
+            ItemStatus::Pending,
+            None,
+        )
+    })
     .await
     {
         Ok(id) => id,
@@ -181,24 +229,31 @@ async fn process_item(ctx: &ImportContext, item: Expanded) {
         Outcome::Duplicate(id) => (ItemStatus::Duplicate, Some(id), None),
         Outcome::Failed(code) => (ItemStatus::Failed, None, Some(code)),
     };
-    if let Err(e) =
-        import_repository::finish_item(&ctx.pool, item_id, status, activity_id, error_code).await
-    {
+    // Se fallisce anche l'ultimo tentativo l'item resta `pending`:
+    // la chiusura dell'import lo trasforma in `failed`/`INTERNAL`
+    let finished = with_retry(|| {
+        import_repository::finish_item(&ctx.pool, item_id, status, activity_id, error_code)
+    })
+    .await;
+    if let Err(e) = finished {
         tracing::error!(import_id = ctx.import_id, item_id, "aggiornamento item fallito: {e}");
     }
 }
 
 /// Registra direttamente un item `failed` con il codice indicato.
 async fn record_failure(ctx: &ImportContext, filename: &str, code: &'static str) {
-    if let Err(e) = import_repository::insert_item(
-        &ctx.pool,
-        ctx.import_id,
-        &truncate_filename(filename),
-        ItemStatus::Failed,
-        Some(code),
-    )
-    .await
-    {
+    let filename = truncate_filename(filename);
+    let inserted = with_retry(|| {
+        import_repository::insert_item(
+            &ctx.pool,
+            ctx.import_id,
+            &filename,
+            ItemStatus::Failed,
+            Some(code),
+        )
+    })
+    .await;
+    if let Err(e) = inserted {
         tracing::error!(import_id = ctx.import_id, "creazione item fallita: {e}");
     }
 }
@@ -215,6 +270,8 @@ async fn import_file(ctx: &ImportContext, file: InputFile) -> Result<Outcome, Ap
     .await
     .map_err(|e| AppError::Internal(format!("calcolo hash: {e}")))?;
 
+    // Controllo rapido senza lock: evita il parsing dei file già importati
+    // (ripetuto sotto lock prima dell'inserimento)
     if let Some(id) = activity_repository::find_by_hash(&ctx.pool, ctx.user_id, &sha).await? {
         return Ok(Outcome::Duplicate(id));
     }
@@ -230,8 +287,17 @@ async fn import_file(ctx: &ImportContext, file: InputFile) -> Result<Outcome, Ap
         Err(e) => return Ok(Outcome::Failed(e.code())),
     };
 
+    // Controlli dei duplicati e inserimento in un'unica transazione, sotto un
+    // lock per utente: due import concorrenti della stessa attività (anche da
+    // file diversi) non possono inserirla entrambi.
+    let mut tx = ctx.pool.begin().await?;
+    activity_repository::lock_user_for_import(&mut *tx, ctx.user_id).await?;
+
+    if let Some(id) = activity_repository::find_by_hash(&mut *tx, ctx.user_id, &sha).await? {
+        return Ok(Outcome::Duplicate(id));
+    }
     if let Some(id) = activity_repository::find_overlapping(
-        &ctx.pool,
+        &mut *tx,
         ctx.user_id,
         activity.sport.as_str(),
         activity.start_time,
@@ -246,20 +312,36 @@ async fn import_file(ctx: &ImportContext, file: InputFile) -> Result<Outcome, Ap
         .await
         .map_err(|e| AppError::Internal(format!("salvataggio file: {e}")))?;
 
-    match activity_repository::insert(&ctx.pool, ctx.user_id, &activity, format, &file_path, &sha)
-        .await
+    // Con il lock la violazione di unicità non dovrebbe verificarsi; se accade
+    // comunque (es. inserimento fuori da questo flusso) è un duplicato.
+    let outcome = match activity_repository::insert(
+        &mut *tx,
+        ctx.user_id,
+        &activity,
+        format,
+        &file_path,
+        &sha,
+    )
+    .await
     {
-        Ok(id) => Ok(Outcome::Imported(id)),
-        // Stesso file importato nel frattempo da un altro upload: il file su
-        // disco ha lo stesso percorso di quello dell'attività esistente.
-        Err(AppError::Coded { code, .. }) if code == activity_repository::DUPLICATE_FILE => {
-            activity_repository::find_by_hash(&ctx.pool, ctx.user_id, &sha)
+        Ok(id) => Outcome::Imported(id),
+        Err(e) if is_duplicate_file(&e) => {
+            // La transazione è annullata dall'errore: si rilegge fuori
+            drop(tx);
+            return activity_repository::find_by_hash(&ctx.pool, ctx.user_id, &sha)
                 .await?
                 .map(Outcome::Duplicate)
-                .ok_or_else(|| AppError::Internal("attività duplicata non trovata".to_string()))
+                .ok_or_else(|| AppError::Internal("attività duplicata non trovata".to_string()));
         }
-        Err(e) => Err(e),
-    }
+        Err(e) => return Err(e),
+    };
+    tx.commit().await?;
+    Ok(outcome)
+}
+
+/// `true` se l'errore è la violazione di unicità (utente, SHA-256) di `insert`.
+fn is_duplicate_file(e: &AppError) -> bool {
+    matches!(e, AppError::Coded { code, .. } if *code == activity_repository::DUPLICATE_FILE)
 }
 
 /// Nome file limitato a `MAX_FILENAME_CHARS` caratteri.
@@ -269,7 +351,66 @@ fn truncate_filename(name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicU32, Ordering};
+
     use super::*;
+
+    /// Anche se l'elaborazione va in panic l'import viene chiuso.
+    #[sqlx::test]
+    async fn supervise_completes_import_when_work_panics(pool: PgPool) {
+        let user_id: i64 = sqlx::query_scalar(
+            "INSERT INTO users (email, username, password_hash, role)              VALUES ('a@example.com', 'a', 'x', 'athlete') RETURNING id",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let import = import_repository::create(&pool, user_id).await.unwrap();
+        import_repository::insert_item(&pool, import.id, "a.gpx", ItemStatus::Pending, None)
+            .await
+            .unwrap();
+
+        supervise(pool.clone(), import.id, async {
+            panic!("elaborazione interrotta (test)");
+        })
+        .await;
+
+        let import = import_repository::find_for_user(&pool, import.id, user_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(import.status, "completed");
+        assert!(import.finished_at.is_some());
+        let items = import_repository::list_items(&pool, import.id).await.unwrap();
+        assert_eq!(items[0].status, "failed");
+        assert_eq!(items[0].error_code.as_deref(), Some("INTERNAL"));
+    }
+
+    #[tokio::test]
+    async fn with_retry_retries_until_success() {
+        let calls = AtomicU32::new(0);
+        let result = with_retry(|| async {
+            if calls.fetch_add(1, Ordering::SeqCst) < WRITE_ATTEMPTS - 1 {
+                Err(AppError::Internal("transitorio".into()))
+            } else {
+                Ok(7)
+            }
+        })
+        .await;
+        assert_eq!(result.unwrap(), 7);
+        assert_eq!(calls.load(Ordering::SeqCst), WRITE_ATTEMPTS);
+    }
+
+    #[tokio::test]
+    async fn with_retry_gives_up_after_max_attempts() {
+        let calls = AtomicU32::new(0);
+        let result: Result<(), AppError> = with_retry(|| async {
+            calls.fetch_add(1, Ordering::SeqCst);
+            Err(AppError::Internal("permanente".into()))
+        })
+        .await;
+        assert!(result.is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), WRITE_ATTEMPTS);
+    }
 
     #[test]
     fn truncate_filename_counts_chars_not_bytes() {

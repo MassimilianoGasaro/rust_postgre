@@ -3,7 +3,9 @@ mod common;
 use std::io::{Cursor, Write};
 
 use axum::http::{Method, StatusCode};
-use rust_postgre::repositories::import_repository;
+use rust_postgre::errors::AppError;
+use rust_postgre::parsing::{parse, FileFormat};
+use rust_postgre::repositories::{activity_repository, import_repository};
 use serde_json::Value;
 use sqlx::PgPool;
 
@@ -331,4 +333,98 @@ async fn fail_interrupted_marks_pending(pool: PgPool) {
         .await
         .unwrap();
     assert_eq!(done_status, "completed");
+}
+
+/// Chiusura dell'import: gli item rimasti `pending` diventano `failed`/`INTERNAL`.
+#[sqlx::test]
+async fn complete_fails_leftover_pending_items(pool: PgPool) {
+    let app = common::test_app(pool.clone());
+    let (user_id, _) = athlete(&app).await;
+
+    let import_id: i64 = sqlx::query_scalar(
+        "INSERT INTO imports (user_id, status) VALUES ($1, 'processing') RETURNING id",
+    )
+    .bind(user_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO import_items (import_id, filename, status) \
+         VALUES ($1, 'a.gpx', 'pending'), ($1, 'b.gpx', 'imported')",
+    )
+    .bind(import_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    import_repository::complete(&pool, import_id).await.unwrap();
+
+    let status: String = sqlx::query_scalar("SELECT status FROM imports WHERE id = $1")
+        .bind(import_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(status, "completed");
+
+    let items: Vec<(String, String, Option<String>)> = sqlx::query_as(
+        "SELECT filename, status, error_code FROM import_items WHERE import_id = $1 ORDER BY filename",
+    )
+    .bind(import_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(items[0], ("a.gpx".into(), "failed".into(), Some("INTERNAL".into())));
+    assert_eq!(items[1], ("b.gpx".into(), "imported".into(), None));
+}
+
+/// Inserire due volte lo stesso file (stesso utente e SHA-256) segnala `DUPLICATE_FILE`.
+#[sqlx::test]
+async fn insert_same_hash_reports_duplicate_file(pool: PgPool) {
+    let app = common::test_app(pool.clone());
+    let (user_id, _) = athlete(&app).await;
+
+    let activity = parse(FileFormat::Gpx, RUN_GPX).unwrap();
+    let sha = "a".repeat(64);
+    activity_repository::insert(&pool, user_id, &activity, FileFormat::Gpx, "x/a.gpx", &sha)
+        .await
+        .unwrap();
+
+    let err = activity_repository::insert(&pool, user_id, &activity, FileFormat::Gpx, "x/a.gpx", &sha)
+        .await
+        .unwrap_err();
+    match err {
+        AppError::Coded { status, code, .. } => {
+            assert_eq!(status, StatusCode::CONFLICT);
+            assert_eq!(code, activity_repository::DUPLICATE_FILE);
+        }
+        other => panic!("atteso DUPLICATE_FILE, ottenuto {other:?}"),
+    }
+}
+
+/// Due upload concorrenti della stessa attività (file diversi): una sola attività.
+#[sqlx::test]
+async fn concurrent_uploads_of_same_activity_insert_once(pool: PgPool) {
+    let app = common::test_app(pool);
+    let (_, token) = athlete(&app).await;
+
+    let tcx = vec![("ride.tcx", RIDE_TCX.to_vec())];
+    let gpx = vec![("ride_same_as_tcx.gpx", RIDE_SAME_AS_TCX_GPX.to_vec())];
+    let ((s1, b1), (s2, b2)) = tokio::join!(app.upload(&token, &tcx), app.upload(&token, &gpx));
+    assert_eq!(s1, StatusCode::ACCEPTED, "{b1}");
+    assert_eq!(s2, StatusCode::ACCEPTED, "{b2}");
+    let first = app.wait_import(&token, b1["id"].as_i64().unwrap()).await;
+    let second = app.wait_import(&token, b2["id"].as_i64().unwrap()).await;
+
+    let mut statuses = vec![
+        item(&first, "ride.tcx")["status"].as_str().unwrap().to_string(),
+        item(&second, "ride_same_as_tcx.gpx")["status"].as_str().unwrap().to_string(),
+    ];
+    statuses.sort();
+    assert_eq!(statuses, ["duplicate", "imported"], "{first} {second}");
+
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM activities")
+        .fetch_one(&app.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
 }
