@@ -60,10 +60,10 @@ fn check_positive<T: PartialOrd + Default>(
     field: &str,
     value: &Option<Option<T>>,
 ) -> Result<(), AppError> {
-    if let Some(Some(v)) = value {
-        if *v <= T::default() {
-            return Err(validation_error(format!("{field} deve essere positivo")));
-        }
+    if let Some(Some(v)) = value
+        && *v <= T::default()
+    {
+        return Err(validation_error(format!("{field} deve essere positivo")));
     }
     Ok(())
 }
@@ -93,19 +93,19 @@ pub async fn update_me(
     if let Some(password) = &req.password {
         validate_password(password)?;
     }
-    if let Some(language) = &req.language {
-        if !LANGUAGES.contains(&language.as_str()) {
-            return Err(validation_error(
-                "language non valida: valori ammessi 'it', 'en'",
-            ));
-        }
+    if let Some(language) = &req.language
+        && !LANGUAGES.contains(&language.as_str())
+    {
+        return Err(validation_error(
+            "language non valida: valori ammessi 'it', 'en'",
+        ));
     }
-    if let Some(Some(sex)) = &req.sex {
-        if !SEXES.contains(&sex.as_str()) {
-            return Err(validation_error(
-                "sex non valido: valori ammessi 'male', 'female', 'other'",
-            ));
-        }
+    if let Some(Some(sex)) = &req.sex
+        && !SEXES.contains(&sex.as_str())
+    {
+        return Err(validation_error(
+            "sex non valido: valori ammessi 'male', 'female', 'other'",
+        ));
     }
     check_positive("weight_kg", &req.weight_kg)?;
     check_positive("max_hr", &req.max_hr)?;
@@ -113,14 +113,14 @@ pub async fn update_me(
     check_positive("ftp_watts", &req.ftp_watts)?;
     check_positive("threshold_pace_s_per_km", &req.threshold_pace_s_per_km)?;
 
-    if let Some(timezone) = &req.timezone {
-        if !user_repository::timezone_exists(pool, timezone).await? {
-            return Err(AppError::coded(
-                StatusCode::BAD_REQUEST,
-                "INVALID_TIMEZONE",
-                format!("Fuso orario '{timezone}' sconosciuto"),
-            ));
-        }
+    if let Some(timezone) = &req.timezone
+        && !user_repository::timezone_exists(pool, timezone).await?
+    {
+        return Err(AppError::coded(
+            StatusCode::BAD_REQUEST,
+            "INVALID_TIMEZONE",
+            format!("Fuso orario '{timezone}' sconosciuto"),
+        ));
     }
 
     // 2. Re-hash della password, se cambia

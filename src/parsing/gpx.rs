@@ -104,12 +104,11 @@ impl GpxReader {
     }
 
     fn end(&mut self) {
-        if self.stack.pop().as_deref() == Some("trkpt") {
-            if let Some(point) = self.current.take() {
-                if point.time.is_some() {
-                    self.points.push(point);
-                }
-            }
+        if self.stack.pop().as_deref() == Some("trkpt")
+            && let Some(point) = self.current.take()
+            && point.time.is_some()
+        {
+            self.points.push(point);
         }
     }
 }

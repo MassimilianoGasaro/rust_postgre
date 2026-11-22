@@ -38,15 +38,15 @@ pub async fn list(
             "per_page deve essere compreso tra 1 e 100",
         ));
     }
-    if let (Some(from), Some(to)) = (query.from, query.to) {
-        if from > to {
-            return Err(validation_error("from non può essere successivo a to"));
-        }
+    if let (Some(from), Some(to)) = (query.from, query.to)
+        && from > to
+    {
+        return Err(validation_error("from non può essere successivo a to"));
     }
-    if let Some(sport) = query.sport.as_deref() {
-        if Sport::from_str_opt(sport).is_none() {
-            return Err(validation_error("sport non valido"));
-        }
+    if let Some(sport) = query.sport.as_deref()
+        && Sport::from_str_opt(sport).is_none()
+    {
+        return Err(validation_error("sport non valido"));
     }
 
     let target = access_service::resolve_target(&state.pool, &auth, query.athlete_id).await?;

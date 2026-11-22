@@ -93,10 +93,10 @@ pub fn validate(query: StatsQuery) -> Result<SummaryRequest, AppError> {
             "l'intervallo non può superare 3660 giorni",
         ));
     }
-    if let Some(sport) = query.sport.as_deref() {
-        if Sport::from_str_opt(sport).is_none() {
-            return Err(validation_error("sport non valido"));
-        }
+    if let Some(sport) = query.sport.as_deref()
+        && Sport::from_str_opt(sport).is_none()
+    {
+        return Err(validation_error("sport non valido"));
     }
     let granularity = match query.granularity.as_deref() {
         Some(g) => Granularity::from_str_opt(g)
