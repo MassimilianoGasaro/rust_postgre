@@ -5,6 +5,7 @@ pub mod activity_controller;
 /// un "gruppo" di endpoint logicamente correlati.
 pub mod auth_controller;
 pub mod coach_link_controller;
+pub mod fallback_controller;
 pub mod health_controller;
 pub mod import_controller;
 pub mod stats_controller;

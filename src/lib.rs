@@ -23,7 +23,7 @@ use axum::{
     Router,
     extract::DefaultBodyLimit,
     http::{HeaderValue, Method, header},
-    middleware::from_fn_with_state,
+    middleware::{from_fn_with_state, map_response},
     routing::{delete, get, post},
 };
 use sqlx::PgPool;
@@ -31,8 +31,8 @@ use tokio::sync::Semaphore;
 use tower_http::cors::CorsLayer;
 
 use controllers::{
-    activity_controller, auth_controller, coach_link_controller, health_controller,
-    import_controller, stats_controller, user_controller,
+    activity_controller, auth_controller, coach_link_controller, fallback_controller,
+    health_controller, import_controller, stats_controller, user_controller,
 };
 
 /// AppState — stato condiviso tra tutti gli handler.
@@ -187,7 +187,12 @@ pub fn build_router(state: AppState) -> Router {
 
     let cors_origin = state.cors_origin.clone();
 
-    let router = Router::new().nest("/api", api).with_state(state);
+    // Route inesistenti (404) e metodi non previsti (405) rispondono in JSON
+    let router = Router::new()
+        .nest("/api", api)
+        .fallback(fallback_controller::not_found)
+        .layer(map_response(fallback_controller::method_not_allowed))
+        .with_state(state);
 
     // ── CORS — solo se è configurata un'origine consentita ─────────────────
     match cors_origin {
