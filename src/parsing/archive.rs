@@ -213,11 +213,11 @@ fn declared_entries<R: Read + Seek>(r: &mut R) -> io::Result<Option<u64>> {
         }
         // Il più alto tra i conteggi "su questo disco" e "totale"
         let mut count = le_u16(&tail[pos..], 8).max(le_u16(&tail[pos..], 10));
-        // 0xFFFF indica che il valore reale è nel record ZIP64
-        if count == u16::MAX as u64 {
-            if let Some(z) = zip64_declared_entries(r, tail_start + pos as u64)? {
-                count = count.max(z);
-            }
+        // Un locator ZIP64 prima dell'EOCD si consulta sempre: il lettore ZIP
+        // passa al record ZIP64 anche quando è saturo solo un altro campo
+        // (es. l'offset della directory) e si fida del suo conteggio.
+        if let Some(z) = zip64_declared_entries(r, tail_start + pos as u64)? {
+            count = count.max(z);
         }
         declared = Some(declared.map_or(count, |d| d.max(count)));
     }
@@ -660,24 +660,39 @@ mod tests {
         assert_eq!(only_rejected(&out), ("huge.zip", "ARCHIVE_TOO_LARGE"));
     }
 
-    #[test]
-    fn zip64_eocd_declaring_a_million_entries_rejected() {
-        let mut zip = b"PK\x06\x06".to_vec();
+    /// Record ZIP64 (EOCD + locator) che dichiara `entries` voci, seguito
+    /// dall'EOCD indicato.
+    fn zip64_with(entries: u64, eocd_record: Vec<u8>) -> Vec<u8> {
+        let mut zip = b"PK".to_vec();
         zip.extend_from_slice(&44u64.to_le_bytes()); // dimensione del record
         zip.extend_from_slice(&[45, 0, 45, 0]); // versioni
         zip.extend_from_slice(&[0; 8]); // numero disco, disco della directory
-        zip.extend_from_slice(&1_000_000u64.to_le_bytes()); // voci su questo disco
-        zip.extend_from_slice(&1_000_000u64.to_le_bytes()); // voci totali
+        zip.extend_from_slice(&entries.to_le_bytes()); // voci su questo disco
+        zip.extend_from_slice(&entries.to_le_bytes()); // voci totali
         zip.extend_from_slice(&[0; 16]); // dimensione e offset della directory
         assert_eq!(zip.len(), ZIP64_EOCD_LEN);
-        zip.extend_from_slice(b"PK\x06\x07"); // locator
+        zip.extend_from_slice(b"PK"); // locator
         zip.extend_from_slice(&[0; 4]);
         zip.extend_from_slice(&0u64.to_le_bytes()); // offset del record ZIP64
         zip.extend_from_slice(&1u32.to_le_bytes());
-        zip.extend_from_slice(&eocd(u16::MAX, 0, 0));
+        zip.extend_from_slice(&eocd_record);
+        zip
+    }
 
+    #[test]
+    fn zip64_eocd_declaring_a_million_entries_rejected() {
+        let zip = zip64_with(1_000_000, eocd(u16::MAX, 0, 0));
         let out = expand("zip64.zip", &zip, &ArchiveLimits::default());
         assert_eq!(only_rejected(&out), ("zip64.zip", "ARCHIVE_TOO_LARGE"));
+    }
+
+    #[test]
+    fn zip64_record_is_consulted_when_only_directory_offset_is_saturated() {
+        // Conteggio EOCD innocuo (1), ma offset = 0xFFFFFFFF: il lettore ZIP
+        // passerebbe al record ZIP64, che dichiara un milione di voci
+        let zip = zip64_with(1_000_000, eocd(1, 46, u32::MAX));
+        let out = expand("sneaky.zip", &zip, &ArchiveLimits::default());
+        assert_eq!(only_rejected(&out), ("sneaky.zip", "ARCHIVE_TOO_LARGE"));
     }
 
     #[test]
