@@ -183,25 +183,32 @@ pub async fn update_me(
 ///
 /// Prima la riga nel DB (profilo e dati collegati vanno in cascata), poi la
 /// cartella `upload_dir/{user_id}` con i suoi file: se non esiste va bene.
+///
+/// Un account già eliminato (es. richiesta concorrente) non è un errore: il
+/// risultato voluto è raggiunto. Un errore di I/O sui file viene loggato con
+/// i dettagli; la risposta resta generica (nessun percorso esposto).
 pub async fn delete_me(
     pool: &PgPool,
     upload_dir: &Path,
     user_id: i64,
     req: DeleteMeRequest,
 ) -> Result<(), AppError> {
-    let user = load_user(pool, user_id).await?;
+    let Some(user) = user_repository::find_by_id(pool, user_id).await? else {
+        return Ok(());
+    };
     check_current_password(&user, Some(req.current_password)).await?;
 
-    let rows_affected = user_repository::delete(pool, user_id).await?;
-    if rows_affected == 0 {
-        return Err(AppError::Unauthorized("Utente non trovato".to_string()));
+    // 0 righe: eliminato nel frattempo da un'altra richiesta, che ne rimuove i file
+    if user_repository::delete(pool, user_id).await? == 0 {
+        return Ok(());
     }
 
     match tokio::fs::remove_dir_all(upload_dir.join(user_id.to_string())).await {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(AppError::Internal(format!(
-            "Impossibile eliminare i file dell'utente {user_id}: {e}"
-        ))),
+        Err(e) => {
+            tracing::error!(user_id, "eliminazione dei file dell'utente fallita: {e}");
+            Err(AppError::Internal("Errore interno del server".to_string()))
+        }
     }
 }

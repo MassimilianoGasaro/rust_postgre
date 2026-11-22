@@ -1,7 +1,9 @@
 mod common;
 
 use axum::http::{Method, StatusCode};
+use rust_postgre::dto::user::DeleteMeRequest;
 use rust_postgre::repositories::user_repository;
+use rust_postgre::services::user_service;
 use serde_json::json;
 use sqlx::PgPool;
 
@@ -357,4 +359,37 @@ async fn delete_me_requires_current_password(pool: PgPool) {
         .request(Method::GET, "/api/users/me", Some(&token), None)
         .await;
     assert_eq!(status, StatusCode::OK);
+}
+
+/// Account già eliminato (es. due richieste concorrenti): l'eliminazione riesce comunque.
+#[sqlx::test]
+async fn delete_me_of_already_deleted_account_succeeds(pool: PgPool) {
+    let app = common::test_app(pool.clone());
+    let req = DeleteMeRequest {
+        current_password: common::TEST_PASSWORD.to_string(),
+    };
+    user_service::delete_me(&pool, app.upload_dir.path(), 999_999, req)
+        .await
+        .expect("account già eliminato: nessun errore");
+}
+
+/// Un errore di I/O sui file dell'utente non espone dettagli (percorsi) nella risposta.
+#[sqlx::test]
+async fn delete_me_io_error_is_generic_500(pool: PgPool) {
+    let app = common::test_app(pool);
+    let (id, token) = app.register("a@example.com", "atleta", "athlete").await;
+    // Un file al posto della cartella dell'utente: la rimozione fallisce
+    std::fs::write(app.upload_dir.path().join(id.to_string()), b"x").unwrap();
+
+    let (status, body) = app
+        .request(
+            Method::DELETE,
+            "/api/users/me",
+            Some(&token),
+            Some(json!({"current_password": common::TEST_PASSWORD})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{body}");
+    assert_eq!(body["code"], "INTERNAL");
+    assert_eq!(body["error"], "Errore interno del server");
 }
