@@ -11,6 +11,7 @@ pub mod errors;
 pub mod extractors;
 pub mod middleware;
 pub mod models;
+pub mod parsing;
 pub mod repositories;
 pub mod services;
 

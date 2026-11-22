@@ -44,6 +44,9 @@ tracing-appender = "0.2"
 # CORS (consente l'origine del client Angular)
 tower-http = { version = "0.6", features = ["cors"] }
 
+# Parsing XML in streaming (GPX, TCX)
+quick-xml = "0.37"
+
 [dev-dependencies]
 # Invio di richieste al Router senza aprire socket (ServiceExt::oneshot)
 tower = { version = "0.5", features = ["util"] }

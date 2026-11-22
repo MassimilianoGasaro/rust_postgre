@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="fixture" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1">
+  <metadata>
+    <name>Metadata name ignored</name>
+    <time>2026-01-10T06:59:00Z</time>
+  </metadata>
+  <trk>
+    <name>Morning Run</name>
+    <type>running</type>
+    <trkseg>
+      <trkpt lat="0.000000" lon="0.000000">
+        <ele>100</ele>
+        <time>2026-01-10T07:00:00Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>140</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+      <trkpt lat="0.001000" lon="0.000000">
+        <ele>101</ele>
+        <time>2026-01-10T07:00:10Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>141</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+      <trkpt lat="0.002000" lon="0.000000">
+        <ele>103</ele>
+        <time>2026-01-10T07:00:20Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>142</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+      <trkpt lat="0.003000" lon="0.000000">
+        <ele>102</ele>
+        <time>2026-01-10T07:00:30Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>143</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+      <trkpt lat="0.004000" lon="0.000000">
+        <ele>106</ele>
+        <time>2026-01-10T07:00:40Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>144</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+      <trkpt lat="0.005000" lon="0.000000">
+        <ele>106</ele>
+        <time>2026-01-10T07:00:50Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>145</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+      <trkpt lat="0.006000" lon="0.000000">
+        <ele>104</ele>
+        <time>2026-01-10T07:01:00Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>146</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+      <trkpt lat="0.007000" lon="0.000000">
+        <ele>110</ele>
+        <time>2026-01-10T07:01:10Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>147</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+      <trkpt lat="0.008000" lon="0.000000">
+        <ele>111</ele>
+        <time>2026-01-10T07:01:20Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>148</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+      <trkpt lat="0.009000" lon="0.000000">
+        <ele>111</ele>
+        <time>2026-01-10T07:01:30Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>149</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+      <trkpt lat="0.010000" lon="0.000000">
+        <ele>112</ele>
+        <time>2026-01-10T07:01:40Z</time>
+        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>150</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="fixture" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>Ride</name>
+    <type>cycling</type>
+    <trkseg>
+      <trkpt lat="0.000000" lon="0.000000">
+        <ele>50</ele>
+        <time>2026-01-10T08:00:30Z</time>
+      </trkpt>
+      <trkpt lat="0.002000" lon="0.000000">
+        <ele>51</ele>
+        <time>2026-01-10T08:01:30Z</time>
+      </trkpt>
+      <trkpt lat="0.004000" lon="0.000000">
+        <ele>52</ele>
+        <time>2026-01-10T08:02:30Z</time>
+      </trkpt>
+      <trkpt lat="0.006000" lon="0.000000">
+        <ele>53</ele>
+        <time>2026-01-10T08:03:30Z</time>
+      </trkpt>
+      <trkpt lat="0.008000" lon="0.000000">
+        <ele>54</ele>
+        <time>2026-01-10T08:04:30Z</time>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>
