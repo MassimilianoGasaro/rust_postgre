@@ -8,8 +8,11 @@ use sqlx::PgPool;
 
 use crate::dto::stats::{StatsQuery, StatsSummaryDto};
 use crate::errors::AppError;
+use crate::middleware::AuthUser;
 use crate::parsing::Sport;
 use crate::repositories::stats_repository::{self, StatsFilter};
+use crate::repositories::user_repository;
+use crate::services::access_service;
 
 /// Ampiezza massima dell'intervallo, in giorni (estremi inclusi).
 pub const MAX_RANGE_DAYS: i64 = 3660;
@@ -77,7 +80,7 @@ fn validation_error(message: &str) -> AppError {
 ///
 /// Errori `400 VALIDATION_FAILED`: `from`/`to` mancanti, `from > to`,
 /// intervallo oltre `MAX_RANGE_DAYS`, sport o granularità non validi.
-pub fn validate(query: StatsQuery) -> Result<SummaryRequest, AppError> {
+fn validate(query: StatsQuery) -> Result<SummaryRequest, AppError> {
     let from = query
         .from
         .ok_or_else(|| validation_error("from è obbligatorio"))?;
@@ -113,8 +116,25 @@ pub fn validate(query: StatsQuery) -> Result<SummaryRequest, AppError> {
     })
 }
 
+/// Statistiche dell'utente o di un atleta collegato (`athlete_id`).
+///
+/// Un input errato è 400 per chiunque, prima del controllo d'accesso.
+pub async fn get_summary(
+    pool: &PgPool,
+    auth: &AuthUser,
+    query: StatsQuery,
+) -> Result<StatsSummaryDto, AppError> {
+    let request = validate(query)?;
+
+    let target = access_service::resolve_target(pool, auth, request.athlete_id).await?;
+    // Giorni e periodi sono calcolati nel fuso dell'atleta di cui si leggono i dati
+    let timezone = user_repository::timezone_of(pool, target).await?;
+
+    summary(pool, target, &timezone, &request).await
+}
+
 /// Statistiche dell'atleta `user_id`, con giorni e periodi nel suo fuso `timezone`.
-pub async fn summary(
+async fn summary(
     pool: &PgPool,
     user_id: i64,
     timezone: &str,
