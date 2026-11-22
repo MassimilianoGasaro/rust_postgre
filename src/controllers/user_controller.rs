@@ -1,92 +1,55 @@
-/// controllers/user_controller.rs — Handler HTTP per la gestione utenti
+/// controllers/user_controller.rs — Handler HTTP per l'utente autenticato
 ///
-/// Endpoint protetti da JWT: ogni handler riceve `Extension(claims)`
-/// con le info dell'utente autenticato già validate dal middleware.
+/// Endpoint protetti da JWT: ogni handler riceve `AuthUser`, ricavato dai
+/// claims già validati dal middleware.
 ///
 /// Endpoint esposti:
-///   GET    /users              → lista paginata
-///   GET    /users/:id          → singolo utente
-///   PATCH  /users/:id          → aggiornamento parziale
-///   DELETE /users/:id          → eliminazione
+///   GET    /users/me → account + profilo
+///   PATCH  /users/me → aggiornamento parziale
+///   DELETE /users/me → eliminazione dell'account
 
-use axum::{
-    extract::{Extension, Path, Query, State},
-    http::StatusCode,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, Json};
 
-use crate::dto::auth::Claims;
-use crate::dto::user::{PaginationQuery, UpdateUserRequest};
+use crate::dto::user::{MeResponse, UpdateMeRequest};
 use crate::errors::AppError;
+use crate::extractors::AppJson;
+use crate::middleware::AuthUser;
 use crate::services::user_service;
 use crate::AppState;
 
-/// GET /users?page=1&per_page=20
+/// GET /users/me
 ///
-/// Restituisce la lista paginata degli utenti.
-/// - `Query(pagination)`: axum legge automaticamente i query params
-/// - `Extension(claims)`: iniettato dal middleware JWT — sappiamo chi chiede
-pub async fn list(
+/// Restituisce i dati dell'utente autenticato insieme al suo profilo.
+pub async fn get_me(
     State(state): State<AppState>,
-    Extension(_claims): Extension<Claims>, // _ perché non lo usiamo qui
-    Query(pagination): Query<PaginationQuery>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let result = user_service::get_all_users(&state.pool, pagination).await?;
-    Ok(Json(serde_json::json!(result)))
+    auth: AuthUser,
+) -> Result<Json<MeResponse>, AppError> {
+    let me = user_service::get_me(&state.pool, auth.id).await?;
+    Ok(Json(me))
 }
 
-/// GET /users/:id
+/// PATCH /users/me
 ///
-/// Restituisce i dati di un singolo utente.
-/// - `Path(id)`: axum estrae l'UUID dal path `/users/:id`
-pub async fn get_by_id(
+/// Aggiornamento parziale: un campo assente resta invariato, `null` azzera
+/// i campi nullable del profilo.
+/// Esempio: {"weight_kg": 70.5, "max_hr": null}
+pub async fn update_me(
     State(state): State<AppState>,
-    Extension(_claims): Extension<Claims>,
-    Path(id): Path<i64>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let user = user_service::get_user_by_id(&state.pool, id).await?;
-    Ok(Json(serde_json::json!(user)))
+    auth: AuthUser,
+    AppJson(req): AppJson<UpdateMeRequest>,
+) -> Result<Json<MeResponse>, AppError> {
+    let me = user_service::update_me(&state.pool, auth.id, req).await?;
+    Ok(Json(me))
 }
 
-/// PATCH /users/:id
+/// DELETE /users/me
 ///
-/// Aggiornamento parziale di un utente.
-/// Il body JSON può contenere uno o più campi (email, username, password).
-/// Esempio: {"username": "nuovo_nome"} — aggiorna solo username.
-pub async fn update(
+/// Elimina l'account e i file dell'utente. Restituisce 204 No Content.
+pub async fn delete_me(
     State(state): State<AppState>,
-    Extension(claims): Extension<Claims>,
-    Path(id): Path<i64>,
-    Json(req): Json<UpdateUserRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    // Opzionale: verifica che l'utente stia modificando solo sé stesso
-    // (rimuovi questo check se gli admin devono poter modificare tutti)
-    if claims.sub != id {
-        return Err(AppError::Unauthorized(
-            "Non puoi modificare un altro utente".to_string(),
-        ));
-    }
-
-    let updated = user_service::update_user(&state.pool, id, req).await?;
-    Ok(Json(serde_json::json!(updated)))
-}
-
-/// DELETE /users/:id
-///
-/// Elimina un utente. Restituisce 204 No Content (nessun body).
-pub async fn delete(
-    State(state): State<AppState>,
-    Extension(claims): Extension<Claims>,
-    Path(id): Path<i64>,
+    auth: AuthUser,
 ) -> Result<StatusCode, AppError> {
-    // Anche qui: solo l'utente stesso può eliminarsi
-    if claims.sub != id {
-        return Err(AppError::Unauthorized(
-            "Non puoi eliminare un altro utente".to_string(),
-        ));
-    }
-
-    user_service::delete_user(&state.pool, id).await?;
+    user_service::delete_me(&state.pool, &state.upload_dir, auth.id).await?;
 
     // 204 No Content — operazione riuscita, nessun body da restituire
     Ok(StatusCode::NO_CONTENT)

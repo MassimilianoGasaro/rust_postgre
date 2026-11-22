@@ -1,6 +1,7 @@
 /// services/auth_service.rs — Logica di business per l'autenticazione
 ///
 /// Questo layer si occupa di:
+/// - Validare i dati di registrazione
 /// - Hashare le password con bcrypt (mai in chiaro nel DB!)
 /// - Verificare la password al login
 /// - Generare token JWT alla registrazione/login
@@ -9,20 +10,94 @@
 /// NON sa nulla di HTTP: non usa Request/Response di Axum.
 /// Riceve tipi semplici (stringhe, struct) e restituisce Result<T, AppError>.
 
+use axum::http::StatusCode;
 use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use sqlx::PgPool;
 
 use crate::dto::auth::{AuthResponse, Claims, LoginRequest, RegisterRequest, UserInfo};
 use crate::errors::AppError;
+use crate::models::user::{Role, User};
 use crate::repositories::user_repository;
+
+/// Lunghezza minima della password.
+pub const MIN_PASSWORD_LEN: usize = 8;
+
+/// Errore di validazione: `400 VALIDATION_FAILED` con il nome del campo nel messaggio.
+pub fn validation_error(message: impl Into<String>) -> AppError {
+    AppError::coded(StatusCode::BAD_REQUEST, "VALIDATION_FAILED", message)
+}
+
+/// Email: contiene `@` ed è lunga al massimo 255 caratteri (limite della colonna).
+pub fn validate_email(email: &str) -> Result<(), AppError> {
+    if !email.contains('@') || email.chars().count() > 255 {
+        return Err(validation_error(
+            "email non valida: deve contenere '@' e al massimo 255 caratteri",
+        ));
+    }
+    Ok(())
+}
+
+/// Username: 3–50 caratteri tra lettere ASCII, cifre, `_`, `.`, `-`.
+pub fn validate_username(username: &str) -> Result<(), AppError> {
+    let len = username.chars().count();
+    let allowed = |c: char| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-');
+    if !(3..=50).contains(&len) || !username.chars().all(allowed) {
+        return Err(validation_error(
+            "username non valido: 3-50 caratteri tra lettere, cifre, '_', '.', '-'",
+        ));
+    }
+    Ok(())
+}
+
+/// Password: almeno `MIN_PASSWORD_LEN` caratteri.
+pub fn validate_password(password: &str) -> Result<(), AppError> {
+    if password.chars().count() < MIN_PASSWORD_LEN {
+        return Err(validation_error(format!(
+            "password troppo corta: minimo {} caratteri",
+            MIN_PASSWORD_LEN
+        )));
+    }
+    Ok(())
+}
+
+/// Hash bcrypt della password.
+/// bcrypt::hash è CPU-intensive: spawn_blocking evita di bloccare il thread asincrono.
+pub async fn hash_password(password: String) -> Result<String, AppError> {
+    tokio::task::spawn_blocking(move || bcrypt::hash(password, bcrypt::DEFAULT_COST))
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .map_err(AppError::from)
+}
+
+/// Costruisce la risposta di login/registrazione (token + info utente).
+fn auth_response(
+    user: User,
+    jwt_secret: &str,
+    jwt_expiration_hours: i64,
+) -> Result<AuthResponse, AppError> {
+    let role = Role::parse(&user.role)
+        .ok_or_else(|| AppError::Internal(format!("Ruolo non valido nel DB: {}", user.role)))?;
+    let token = generate_jwt(user.id, &user.email, role, jwt_secret, jwt_expiration_hours)?;
+
+    Ok(AuthResponse {
+        token,
+        user: UserInfo {
+            id: user.id,
+            email: user.email,
+            username: user.username,
+            role,
+        },
+    })
+}
 
 /// Registra un nuovo utente.
 ///
 /// Flusso:
-/// 1. Controlla che email e username non siano già in uso
+/// 1. Valida email, username e password
 /// 2. Hasha la password con bcrypt
-/// 3. Salva l'utente nel DB tramite il repository
+/// 3. In UNA transazione crea l'utente e il suo profilo (con i default);
+///    email/username duplicati sono intercettati dal vincolo UNIQUE
 /// 4. Genera e restituisce il token JWT
 pub async fn register(
     pool: &PgPool,
@@ -30,86 +105,82 @@ pub async fn register(
     jwt_expiration_hours: i64,
     req: RegisterRequest,
 ) -> Result<AuthResponse, AppError> {
-    // 1. Verifica email unica
-    if user_repository::find_by_email(pool, &req.email).await?.is_some() {
-        return Err(AppError::Conflict(format!(
-            "Email '{}' già registrata",
-            req.email
-        )));
-    }
+    // 1. Validazione
+    validate_email(&req.email)?;
+    validate_username(&req.username)?;
+    validate_password(&req.password)?;
 
     // 2. Hash della password
-    // bcrypt::hash è CPU-intensive: spawn_blocking evita di bloccare il thread asincrono
-    let password = req.password.clone();
-    let password_hash = tokio::task::spawn_blocking(move || {
-        bcrypt::hash(password, bcrypt::DEFAULT_COST)
-    })
-    .await
-    .map_err(|e| AppError::Internal(e.to_string()))??;
+    let password_hash = hash_password(req.password).await?;
 
-    // 3. Salva nel DB
-    let user =
-        user_repository::create(pool, &req.email, &req.username, &password_hash).await?;
+    // 3. Utente + profilo nella stessa transazione: o entrambi o nessuno
+    let mut tx = pool.begin().await?;
+    let user = user_repository::create(
+        &mut tx,
+        &req.email,
+        &req.username,
+        &password_hash,
+        req.role,
+    )
+    .await?;
+    user_repository::create_profile(&mut tx, user.id).await?;
+    tx.commit().await?;
 
     // 4. Genera JWT
-    let token = generate_jwt(user.id, &user.email, jwt_secret, jwt_expiration_hours)?;
-
-    Ok(AuthResponse {
-        token,
-        user: UserInfo {
-            id: user.id,
-            email: user.email,
-            username: user.username,
-        },
-    })
+    auth_response(user, jwt_secret, jwt_expiration_hours)
 }
 
 /// Effettua il login di un utente esistente.
 ///
 /// Flusso:
 /// 1. Cerca l'utente per email
-/// 2. Verifica che l'account sia attivo
-/// 3. Confronta la password con l'hash in DB
+/// 2. Confronta la password con l'hash in DB
+/// 3. Verifica che l'account sia attivo
 /// 4. Genera e restituisce il token JWT
+///
+/// Lo stato dell'account si controlla DOPO la password: chi non la conosce
+/// non deve poter capire se un account esiste ed è disabilitato.
 pub async fn login(
     pool: &PgPool,
     jwt_secret: &str,
     jwt_expiration_hours: i64,
     req: LoginRequest,
 ) -> Result<AuthResponse, AppError> {
-    // 1. Cerca l'utente — messaggio generico per non rivelare se l'email esiste
+    let invalid = || {
+        AppError::coded(
+            StatusCode::UNAUTHORIZED,
+            "INVALID_CREDENTIALS",
+            "Credenziali non valide",
+        )
+    };
+
+    // 1. Cerca l'utente — stesso errore per email sconosciuta e password errata
     let user = user_repository::find_by_email(pool, &req.email)
         .await?
-        .ok_or_else(|| AppError::Unauthorized("Credenziali non valide".to_string()))?;
+        .ok_or_else(invalid)?;
 
-    // 2. Controlla che l'account non sia disabilitato
-    if !user.is_active {
-        return Err(AppError::Unauthorized("Account disabilitato".to_string()));
-    }
-
-    // 3. Verifica password — anche questa è CPU-intensive
-    let password = req.password.clone();
+    // 2. Verifica password — anche questa è CPU-intensive
+    let password = req.password;
     let hash = user.password_hash.clone();
     let password_valid = tokio::task::spawn_blocking(move || bcrypt::verify(password, &hash))
         .await
         .map_err(|e| AppError::Internal(e.to_string()))??;
 
     if !password_valid {
-        // Stesso messaggio del "not found" — non riveliamo quale dei due è sbagliato
-        return Err(AppError::Unauthorized("Credenziali non valide".to_string()));
+        return Err(invalid());
+    }
+
+    // 3. Account disabilitato
+    if !user.is_active {
+        return Err(AppError::coded(
+            StatusCode::UNAUTHORIZED,
+            "ACCOUNT_DISABLED",
+            "Account disabilitato",
+        ));
     }
 
     // 4. Genera JWT
-    let token = generate_jwt(user.id, &user.email, jwt_secret, jwt_expiration_hours)?;
-
-    Ok(AuthResponse {
-        token,
-        user: UserInfo {
-            id: user.id,
-            email: user.email,
-            username: user.username,
-        },
-    })
+    auth_response(user, jwt_secret, jwt_expiration_hours)
 }
 
 /// Valida un token JWT e restituisce i Claims in esso contenuti.
@@ -130,13 +201,15 @@ pub fn validate_jwt(token: &str, jwt_secret: &str) -> Result<Claims, AppError> {
 /// Genera un JWT firmato con HMAC-SHA256.
 ///
 /// Il token contiene:
-/// - `sub`: UUID dell'utente (come stringa)
+/// - `sub`: ID dell'utente
 /// - `email`: email dell'utente (utile per display senza query al DB)
+/// - `role`: ruolo (`athlete` / `coach`) per i controlli di autorizzazione
 /// - `iat`: timestamp di emissione
 /// - `exp`: timestamp di scadenza (iat + jwt_expiration_hours)
 fn generate_jwt(
     user_id: i64,
     email: &str,
+    role: Role,
     jwt_secret: &str,
     expiration_hours: i64,
 ) -> Result<String, AppError> {
@@ -147,6 +220,7 @@ fn generate_jwt(
     let claims = Claims {
         sub: user_id,
         email: email.to_string(),
+        role: role.as_str().to_string(),
         exp,
         iat,
     };

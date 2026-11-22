@@ -8,6 +8,7 @@ pub mod config;
 pub mod controllers;
 pub mod dto;
 pub mod errors;
+pub mod extractors;
 pub mod middleware;
 pub mod models;
 pub mod repositories;
@@ -18,7 +19,7 @@ use std::path::PathBuf;
 use axum::{
     http::{header, HeaderValue, Method},
     middleware::from_fn_with_state,
-    routing::{delete, get, patch, post},
+    routing::{get, post},
     Router,
 };
 use sqlx::PgPool;
@@ -70,14 +71,15 @@ pub fn build_router(state: AppState) -> Router {
 
     // ── Route PROTETTE — richiedono JWT valido nell'header ─────────────────
     let user_routes = Router::new()
-        .route("/", get(user_controller::list))
-        // GET /api/users → lista paginata utenti
-        .route("/:id", get(user_controller::get_by_id))
-        // GET /api/users/:id → singolo utente
-        .route("/:id", patch(user_controller::update))
-        // PATCH /api/users/:id → aggiornamento parziale
-        .route("/:id", delete(user_controller::delete))
-        // DELETE /api/users/:id → elimina utente
+        // GET    /api/users/me → account + profilo dell'utente autenticato
+        // PATCH  /api/users/me → aggiornamento parziale (campo assente = invariato)
+        // DELETE /api/users/me → elimina il proprio account (204)
+        .route(
+            "/me",
+            get(user_controller::get_me)
+                .patch(user_controller::update_me)
+                .delete(user_controller::delete_me),
+        )
         //
         // Applica il middleware JWT a TUTTE le route di questo gruppo.
         // Il middleware viene eseguito PRIMA dell'handler.

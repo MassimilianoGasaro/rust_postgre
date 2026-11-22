@@ -12,13 +12,16 @@
 /// e sanno chi è l'utente autenticato senza fare query al DB.
 
 use axum::{
-    extract::{Request, State},
-    http::header::AUTHORIZATION,
+    async_trait,
+    extract::{FromRequestParts, Request, State},
+    http::{header::AUTHORIZATION, request::Parts, StatusCode},
     middleware::Next,
     response::Response,
 };
 
+use crate::dto::auth::Claims;
 use crate::errors::AppError;
+use crate::models::user::Role;
 use crate::services::auth_service;
 use crate::AppState;
 
@@ -52,4 +55,72 @@ pub async fn auth_middleware(
 
     // Passa la request all'handler successivo
     Ok(next.run(req).await)
+}
+
+/// Utente autenticato, estratto dai `Claims` iniettati da `auth_middleware`.
+///
+/// Gli handler lo dichiarano come parametro (`auth: AuthUser`) invece di
+/// leggere i claims a mano. Funziona solo su route protette dal middleware:
+/// senza claims risponde 401.
+#[derive(Debug, Clone, Copy)]
+pub struct AuthUser {
+    pub id: i64,
+    pub role: Role,
+}
+
+impl AuthUser {
+    /// Verifica che l'utente abbia il ruolo richiesto, altrimenti `403 ROLE_FORBIDDEN`.
+    pub fn require_role(&self, role: Role) -> Result<(), AppError> {
+        if self.role == role {
+            Ok(())
+        } else {
+            Err(AppError::coded(
+                StatusCode::FORBIDDEN,
+                "ROLE_FORBIDDEN",
+                format!("Operazione riservata al ruolo '{}'", role.as_str()),
+            ))
+        }
+    }
+}
+
+#[async_trait]
+impl<S> FromRequestParts<S> for AuthUser
+where
+    S: Send + Sync,
+{
+    type Rejection = AppError;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        let claims = parts
+            .extensions
+            .get::<Claims>()
+            .ok_or_else(|| AppError::Unauthorized("Autenticazione richiesta".to_string()))?;
+
+        let role = Role::parse(&claims.role)
+            .ok_or_else(|| AppError::Unauthorized("Ruolo nel token non valido".to_string()))?;
+
+        Ok(AuthUser {
+            id: claims.sub,
+            role,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn require_role_allows_matching_role_only() {
+        let coach = AuthUser { id: 1, role: Role::Coach };
+        assert!(coach.require_role(Role::Coach).is_ok());
+
+        match coach.require_role(Role::Athlete) {
+            Err(AppError::Coded { status, code, .. }) => {
+                assert_eq!(status, StatusCode::FORBIDDEN);
+                assert_eq!(code, "ROLE_FORBIDDEN");
+            }
+            other => panic!("atteso ROLE_FORBIDDEN, ottenuto {other:?}"),
+        }
+    }
 }

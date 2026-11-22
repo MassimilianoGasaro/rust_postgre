@@ -19,6 +19,9 @@ use tower::ServiceExt;
 /// Segreto JWT fisso, usato solo nei test.
 pub const TEST_JWT_SECRET: &str = "test-secret-test-secret-test-secret-0123";
 
+/// Password usata da `TestApp::register`.
+pub const TEST_PASSWORD: &str = "password123";
+
 /// Applicazione di test: router + risorse che devono restare vive per tutto il test.
 pub struct TestApp {
     pub router: Router,
@@ -95,5 +98,27 @@ impl TestApp {
         };
 
         (status, value)
+    }
+
+    /// Registra un utente con `TEST_PASSWORD` e ritorna `(id, token)`.
+    pub async fn register(&self, email: &str, username: &str, role: &str) -> (i64, String) {
+        let (status, body) = self
+            .request(
+                Method::POST,
+                "/api/auth/register",
+                None,
+                Some(serde_json::json!({
+                    "email": email,
+                    "username": username,
+                    "password": TEST_PASSWORD,
+                    "role": role,
+                })),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CREATED, "registrazione fallita: {body}");
+
+        let id = body["user"]["id"].as_i64().expect("id utente mancante");
+        let token = body["token"].as_str().expect("token mancante").to_string();
+        (id, token)
     }
 }
