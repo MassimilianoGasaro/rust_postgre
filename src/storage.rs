@@ -32,7 +32,11 @@ pub async fn save(
     bytes: &[u8],
 ) -> std::io::Result<String> {
     // L'hash finisce nel percorso: deve essere davvero un hash
-    if sha256.len() != 64 || !sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
+    if sha256.len() != 64
+        || !sha256
+            .bytes()
+            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    {
         return Err(Error::new(ErrorKind::InvalidInput, "invalid sha256"));
     }
 
@@ -121,10 +125,13 @@ mod tests {
     #[tokio::test]
     async fn save_rejects_non_hex_sha() {
         let dir = tempfile::tempdir().unwrap();
-        let err = save(dir.path(), 1, "../../etc/x", FileFormat::Fit, b"x")
-            .await
-            .unwrap_err();
-        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+        let upper = "BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD";
+        for bad in ["../../etc/x", upper] {
+            let err = save(dir.path(), 1, bad, FileFormat::Fit, b"x")
+                .await
+                .unwrap_err();
+            assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput, "{bad}");
+        }
     }
 
     #[tokio::test]

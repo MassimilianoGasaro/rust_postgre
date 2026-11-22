@@ -57,10 +57,11 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 sha2 = "0.10"
 hex = "0.4"
 
+# File temporanei anonimi per gli ZIP annidati (e directory temporanee nei test)
+tempfile = "3"
+
 [dev-dependencies]
 # Invio di richieste al Router senza aprire socket (ServiceExt::oneshot)
 tower = { version = "0.5", features = ["util"] }
 # Lettura del corpo delle risposte nei test
 http-body-util = "0.1"
-# Directory temporanea per gli upload nei test
-tempfile = "3"
