@@ -6,3 +6,5 @@
 
 pub mod user;
 pub mod coach_link;
+pub mod activity;
+pub mod import;

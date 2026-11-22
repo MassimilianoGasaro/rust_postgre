@@ -9,3 +9,5 @@
 
 pub mod user_repository;
 pub mod coach_link_repository;
+pub mod activity_repository;
+pub mod import_repository;

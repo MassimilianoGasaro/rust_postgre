@@ -19,6 +19,7 @@ pub mod storage;
 use std::path::PathBuf;
 
 use axum::{
+    extract::DefaultBodyLimit,
     http::{header, HeaderValue, Method},
     middleware::from_fn_with_state,
     routing::{get, post},
@@ -27,7 +28,9 @@ use axum::{
 use sqlx::PgPool;
 use tower_http::cors::CorsLayer;
 
-use controllers::{auth_controller, coach_link_controller, health_controller, user_controller};
+use controllers::{
+    auth_controller, coach_link_controller, health_controller, import_controller, user_controller,
+};
 
 /// AppState — stato condiviso tra tutti gli handler.
 ///
@@ -64,6 +67,7 @@ pub struct AppState {
 ///   /api/auth   → route pubbliche (no JWT richiesto)
 ///   /api/users  → route protette (JWT obbligatorio tramite middleware)
 ///   /api/coach-links, /api/athletes → route protette (relazione allenatore-atleta)
+///   /api/imports → route protette (upload di file di attività ed esito)
 pub fn build_router(state: AppState) -> Router {
     // ── Route PUBBLICHE — accessibili senza token ──────────────────────────
     let auth_routes = Router::new()
@@ -111,12 +115,33 @@ pub fn build_router(state: AppState) -> Router {
             middleware::auth_middleware,
         ));
 
+    // Import di file di attività (protette da JWT):
+    //   POST /api/imports      → upload multipart, elaborato in background (202)
+    //   GET  /api/imports      → ultimi 20 import dell'utente
+    //   GET  /api/imports/:id  → dettaglio con l'esito di ogni file
+    //
+    // L'upload sostituisce il limite di default di axum (2 MiB) con MAX_UPLOAD_BYTES.
+    let import_routes = Router::new()
+        .route(
+            "/imports",
+            // Il limite è applicato solo al POST (registrato prima del layer)
+            post(import_controller::upload)
+                .layer(DefaultBodyLimit::max(state.max_upload_bytes))
+                .get(import_controller::list),
+        )
+        .route("/imports/:id", get(import_controller::get))
+        .route_layer(from_fn_with_state(
+            state.clone(),
+            middleware::auth_middleware,
+        ));
+
     // ── Tutte le route applicative vivono sotto /api ───────────────────────
     let api = Router::new()
         .route("/health", get(health_controller::health))
         .nest("/auth", auth_routes)
         .nest("/users", user_routes)
-        .merge(coach_link_routes);
+        .merge(coach_link_routes)
+        .merge(import_routes);
 
     let cors_origin = state.cors_origin.clone();
 

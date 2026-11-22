@@ -11,7 +11,7 @@
 
 use axum_server::tls_rustls::RustlsConfig;
 
-use rust_postgre::{build_router, config, AppState};
+use rust_postgre::{build_router, config, repositories::import_repository, AppState};
 
 #[tokio::main]
 async fn main() {
@@ -37,10 +37,26 @@ async fn main() {
         .expect("Impossibile applicare le migration");
     tracing::info!("Migration applicate");
 
+    // Gli import rimasti `processing` da un'esecuzione precedente non verranno
+    // mai completati: li chiude come `failed` (item `IMPORT_INTERRUPTED`)
+    let interrupted = import_repository::fail_interrupted(&pool)
+        .await
+        .expect("Impossibile chiudere gli import interrotti");
+    if interrupted > 0 {
+        tracing::warn!("{} import interrotti chiusi come failed", interrupted);
+    }
+
     // Assicura che la directory degli upload esista
     tokio::fs::create_dir_all(&config.upload_dir)
         .await
         .expect("Impossibile creare la directory di upload");
+
+    // File temporanei di upload rimasti da un'esecuzione interrotta
+    match tokio::fs::remove_dir_all(config.upload_dir.join("tmp")).await {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => tracing::warn!("Pulizia dei file temporanei di upload fallita: {}", e),
+    }
 
     // Estrai prima i dati che servono dopo, così non ci sono problemi di ownership
     let address: std::net::SocketAddr = config

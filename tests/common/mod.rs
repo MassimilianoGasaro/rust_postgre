@@ -19,6 +19,9 @@ use tower::ServiceExt;
 /// Segreto JWT fisso, usato solo nei test.
 pub const TEST_JWT_SECRET: &str = "test-secret-test-secret-test-secret-0123";
 
+/// Boundary fisso dei corpi multipart costruiti nei test.
+const MULTIPART_BOUNDARY: &str = "----rust-postgre-test-boundary";
+
 /// Password usata da `TestApp::register`.
 pub const TEST_PASSWORD: &str = "password123";
 
@@ -40,7 +43,8 @@ pub fn test_app(pool: PgPool) -> TestApp {
         jwt_expiration_hours: 1,
         upload_dir: upload_dir.path().to_path_buf(),
         max_upload_bytes: 10 * 1024 * 1024,
-        max_file_bytes: 1024 * 1024,
+        // Sopra il limite di default di axum (2 MiB): i test di upload lo superano
+        max_file_bytes: 8 * 1024 * 1024,
         cors_origin: None,
     };
 
@@ -120,5 +124,83 @@ impl TestApp {
         let id = body["user"]["id"].as_i64().expect("id utente mancante");
         let token = body["token"].as_str().expect("token mancante").to_string();
         (id, token)
+    }
+
+    /// `POST /api/imports` con un campo multipart `files` per ogni elemento
+    /// `(nome file, contenuto)`; ritorna status e corpo JSON.
+    pub async fn upload(&self, token: &str, files: &[(&str, Vec<u8>)]) -> (StatusCode, serde_json::Value) {
+        let parts: Vec<(&str, &str, &[u8])> = files
+            .iter()
+            .map(|(name, bytes)| ("files", *name, bytes.as_slice()))
+            .collect();
+        self.upload_fields(token, &parts).await
+    }
+
+    /// Come `upload`, ma con nomi di campo arbitrari: `(campo, nome file, contenuto)`.
+    pub async fn upload_fields(
+        &self,
+        token: &str,
+        fields: &[(&str, &str, &[u8])],
+    ) -> (StatusCode, serde_json::Value) {
+        let mut body = Vec::new();
+        for (field, filename, bytes) in fields {
+            body.extend_from_slice(
+                format!(
+                    "--{MULTIPART_BOUNDARY}\r\nContent-Disposition: form-data; name=\"{field}\"; \
+                     filename=\"{filename}\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+                )
+                .as_bytes(),
+            );
+            body.extend_from_slice(bytes);
+            body.extend_from_slice(b"\r\n");
+        }
+        body.extend_from_slice(format!("--{MULTIPART_BOUNDARY}--\r\n").as_bytes());
+
+        let request = Request::builder()
+            .method(Method::POST)
+            .uri("/api/imports")
+            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .header(
+                header::CONTENT_TYPE,
+                format!("multipart/form-data; boundary={MULTIPART_BOUNDARY}"),
+            )
+            .body(Body::from(body))
+            .expect("richiesta di test non valida");
+
+        let response = self
+            .router
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("il router è infallibile");
+        let status = response.status();
+        let bytes = response
+            .into_body()
+            .collect()
+            .await
+            .expect("lettura del corpo fallita")
+            .to_bytes();
+        let value = serde_json::from_slice(&bytes).expect("il corpo non è JSON valido");
+        (status, value)
+    }
+
+    /// Attende la fine dell'import (poll ogni 50 ms, max 10 s) e ne ritorna il dettaglio.
+    ///
+    /// Panica se l'import non arriva a `completed` entro il tempo massimo.
+    pub async fn wait_import(&self, token: &str, id: i64) -> serde_json::Value {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let (status, body) = self
+                .request(Method::GET, &format!("/api/imports/{id}"), Some(token), None)
+                .await;
+            assert_eq!(status, StatusCode::OK, "lettura import fallita: {body}");
+            if body["status"] == "completed" {
+                return body;
+            }
+            if body["status"] != "processing" || std::time::Instant::now() >= deadline {
+                panic!("import {id} non completato: {body}");
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
     }
 }
