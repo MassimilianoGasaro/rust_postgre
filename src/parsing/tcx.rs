@@ -12,7 +12,7 @@ use quick_xml::events::{BytesStart, Event};
 use super::metrics::elevation_gain;
 use super::{
     ParseError, ParsedActivity, Sport, check_depth, finite_number, local_name, parse_time,
-    rounded_mean, seconds_to_i32, weighted_mean,
+    rounded_mean, seconds_to_i32, truncate_text, weighted_mean,
 };
 
 /// Dati di un giro (`<Lap>`).
@@ -59,10 +59,10 @@ impl TcxReader {
                 for attr in e.attributes() {
                     let attr = attr.map_err(|e| ParseError::Malformed(e.to_string()))?;
                     if local_name(attr.key.local_name()) == "Sport" {
-                        self.sport_raw = attr
+                        let value = attr
                             .unescape_value()
-                            .map_err(|e| ParseError::Malformed(e.to_string()))?
-                            .into_owned();
+                            .map_err(|e| ParseError::Malformed(e.to_string()))?;
+                        self.sport_raw = truncate_text(&value);
                     }
                 }
             }
@@ -249,6 +249,7 @@ fn build(state: TcxReader) -> Result<ParsedActivity, ParseError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parsing::MAX_TEXT_CHARS;
     use chrono::TimeZone;
 
     #[test]
@@ -373,5 +374,17 @@ mod tests {
     fn tcx_invalid_id_is_malformed() {
         let xml = br#"<TrainingCenterDatabase><Activities><Activity Sport="Running"><Id>yesterday</Id></Activity></Activities></TrainingCenterDatabase>"#;
         assert_eq!(parse(xml).unwrap_err().code(), "PARSE_ERROR");
+    }
+
+    #[test]
+    fn long_sport_attribute_is_truncated() {
+        let sport = "à".repeat(300);
+        let xml = format!(
+            r#"<TrainingCenterDatabase><Activities><Activity Sport="{sport}"><Id>2026-01-10T08:00:00Z</Id>
+            <Lap><TotalTimeSeconds>60</TotalTimeSeconds></Lap></Activity></Activities></TrainingCenterDatabase>"#
+        );
+        let a = parse(xml.as_bytes()).unwrap();
+        assert_eq!(a.sport_raw.chars().count(), MAX_TEXT_CHARS);
+        assert_eq!(a.sport, Sport::Other);
     }
 }

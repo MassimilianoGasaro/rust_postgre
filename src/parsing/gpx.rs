@@ -11,7 +11,7 @@ use quick_xml::events::{BytesStart, Event};
 use super::metrics::{elevation_gain, haversine_m, moving_seconds};
 use super::{
     ParseError, ParsedActivity, Sport, check_depth, finite_number, local_name, parse_time,
-    rounded_mean,
+    rounded_mean, truncate_text,
 };
 
 /// Punto di traccia con tempo (i punti senza tempo vengono scartati).
@@ -95,8 +95,8 @@ impl GpxReader {
             .map(|i| self.stack[i].as_str());
         if parent == Some("trk") && !text.is_empty() {
             match name.as_str() {
-                "name" if self.name.is_none() => self.name = Some(text.to_owned()),
-                "type" if self.sport_raw.is_none() => self.sport_raw = Some(text.to_owned()),
+                "name" if self.name.is_none() => self.name = Some(truncate_text(text)),
+                "type" if self.sport_raw.is_none() => self.sport_raw = Some(truncate_text(text)),
                 _ => {}
             }
         }
@@ -233,6 +233,7 @@ fn build(state: GpxReader) -> Result<ParsedActivity, ParseError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parsing::MAX_TEXT_CHARS;
     use chrono::{TimeZone, Utc};
 
     fn fixture(name: &str) -> Vec<u8> {
@@ -366,5 +367,20 @@ mod tests {
         ] {
             assert_eq!(sport_from_type(raw), sport, "{raw}");
         }
+    }
+
+    #[test]
+    fn long_name_and_type_are_truncated() {
+        let name = "è".repeat(300);
+        let kind = format!("hiking{}", "x".repeat(300));
+        let xml = format!(
+            r#"<gpx><trk><name>{name}</name><type>{kind}</type><trkseg>
+            <trkpt lat="0" lon="0"><time>2026-01-10T07:00:00Z</time></trkpt>
+            </trkseg></trk></gpx>"#
+        );
+        let a = parse(xml.as_bytes()).unwrap();
+        assert_eq!(a.name.unwrap().chars().count(), MAX_TEXT_CHARS);
+        assert_eq!(a.sport_raw.chars().count(), MAX_TEXT_CHARS);
+        assert_eq!(a.sport, Sport::Hiking);
     }
 }

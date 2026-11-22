@@ -157,6 +157,15 @@ pub fn parse(format: FileFormat, bytes: &[u8]) -> Result<ParsedActivity, ParseEr
 /// Profondità massima di annidamento XML accettata (difesa da input ostili).
 pub(crate) const MAX_XML_DEPTH: usize = 64;
 
+/// Lunghezza massima (in caratteri) dei testi liberi letti dai file XML
+/// (nome dell'attività, sport così come scritto): l'input non è fidato.
+pub(crate) const MAX_TEXT_CHARS: usize = 200;
+
+/// Testo limitato a `MAX_TEXT_CHARS` caratteri (non byte).
+pub(crate) fn truncate_text(s: &str) -> String {
+    s.chars().take(MAX_TEXT_CHARS).collect()
+}
+
 /// Interpreta un timestamp RFC 3339 e lo converte in UTC.
 pub(crate) fn parse_time(s: &str) -> Result<DateTime<Utc>, ParseError> {
     DateTime::parse_from_rfc3339(s.trim())
