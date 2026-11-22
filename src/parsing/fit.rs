@@ -599,4 +599,58 @@ mod tests {
         assert_eq!(a.elapsed_s, i32::MAX);
         assert_eq!(a.moving_s, Some(i32::MAX));
     }
+
+    /// Inizio di `tests/fixtures/ride.fit`: 2026-01-10T08:00:30Z, 30 s dopo `ride.tcx`.
+    const RIDE_FIXTURE_START: i64 = 1_768_032_030;
+
+    /// Contenuto di `tests/fixtures/ride.fit`: uscita in bici sintetica (nessun
+    /// dato reale), la stessa attività di `ride.tcx` registrata da un altro
+    /// dispositivo. Sessione + messaggio `activity` (ora locale UTC+1).
+    fn ride_fixture() -> Vec<u8> {
+        let spec = Spec {
+            sport: 2,
+            elapsed_ms: 900_000,
+            timer_ms: 880_000,
+            distance_cm: 750_000,
+            calories: 150,
+            avg_hr: 132,
+            max_hr: 155,
+            avg_power: 205,
+            ascent: 12,
+            ..Spec::running(RIDE_FIXTURE_START)
+        };
+        fit_file(&[
+            session_message(true, &spec),
+            activity_message(
+                RIDE_FIXTURE_START,
+                (RIDE_FIXTURE_START - FIT_EPOCH + 3600) as u32,
+            ),
+        ])
+    }
+
+    /// La fixture versionata è esattamente l'output del builder (dati sintetici).
+    #[test]
+    fn ride_fixture_is_synthetic() {
+        let committed = include_bytes!("../../tests/fixtures/ride.fit");
+        assert_eq!(committed.as_slice(), ride_fixture().as_slice());
+        let a = parse(committed).unwrap();
+        assert_eq!(a.sport, Sport::Cycling);
+        assert_eq!(a.start_time.timestamp(), RIDE_FIXTURE_START);
+        assert_eq!(a.utc_offset_seconds, Some(3600));
+    }
+
+    /// Un file troncato subito dopo il messaggio `session` (senza i messaggi
+    /// successivi né il CRC finale) viene comunque letto: i dati della sessione
+    /// sono completi (scelta voluta, es. registrazione interrotta).
+    #[test]
+    fn file_truncated_after_session_is_parsed() {
+        let session = session_message(true, &Spec::running(T0));
+        let file = fit_file(&[session.clone(), activity_message(T0, 0)]);
+        let truncated = &file[..14 + session.len()];
+
+        let a = parse(truncated).unwrap();
+        assert_eq!(a.sport, Sport::Running);
+        assert_eq!(a.start_time.timestamp(), T0);
+        assert_eq!(a.distance_m, Some(10_000.0));
+    }
 }

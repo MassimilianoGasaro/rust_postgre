@@ -15,6 +15,12 @@ const RUN_GPX: &[u8] = include_bytes!("fixtures/run.gpx");
 const RIDE_TCX: &[u8] = include_bytes!("fixtures/ride.tcx");
 const RIDE_SAME_AS_TCX_GPX: &[u8] = include_bytes!("fixtures/ride_same_as_tcx.gpx");
 const MALFORMED_FIT: &[u8] = include_bytes!("fixtures/malformed.fit");
+/// FIT sintetico (vedi `parsing::fit::tests::ride_fixture`): la stessa uscita
+/// di `ride.tcx`, con inizio 30 s dopo.
+const RIDE_FIT: &[u8] = include_bytes!("fixtures/ride.fit");
+/// Lunghezza di `ride.fit` fino alla fine del messaggio `session`
+/// (header di 14 byte + definizione e dati della sessione).
+const RIDE_FIT_SESSION_END: usize = 87;
 const HIKE_GPX: &[u8] = include_bytes!("fixtures/hike.gpx");
 const HIKE_UNTYPED_GPX: &[u8] = include_bytes!("fixtures/hike_untyped.gpx");
 
@@ -93,9 +99,10 @@ async fn upload_same_file_twice_second_is_duplicate(pool: PgPool) {
     assert_eq!(dup["activity_id"].as_i64(), Some(first_id));
 }
 
-/// Review Focus 2: la stessa attività da due formati diversi (inizio a +30 s) è un duplicato.
+/// Review Focus 2: la stessa attività da due formati diversi (TCX e GPX, inizio a +30 s)
+/// è un duplicato.
 #[sqlx::test]
-async fn same_activity_fit_and_tcx_is_duplicate(pool: PgPool) {
+async fn same_activity_tcx_and_gpx_is_duplicate(pool: PgPool) {
     let app = common::test_app(pool);
     let (_, token) = athlete(&app).await;
 
@@ -158,6 +165,66 @@ async fn same_activity_with_unknown_sport_is_duplicate(pool: PgPool) {
     let dup = item(&second, "hike.gpx");
     assert_eq!(dup["status"], "duplicate", "{second}");
     assert_eq!(dup["activity_id"].as_i64(), Some(untyped_id));
+}
+
+/// Import end-to-end di un file FIT: attività salvata con le metriche della sessione.
+#[sqlx::test]
+async fn upload_fit_imports_activity(pool: PgPool) {
+    let app = common::test_app(pool);
+    let (_, token) = athlete(&app).await;
+
+    let result = import(&app, &token, &[("ride.fit", RIDE_FIT.to_vec())]).await;
+    let ride = item(&result, "ride.fit");
+    assert_eq!(ride["status"], "imported", "{result}");
+    let id = ride["activity_id"].as_i64().unwrap();
+
+    let (status, body) = app
+        .request(Method::GET, "/api/activities", Some(&token), None)
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let activity = &body["items"][0];
+    assert_eq!(activity["id"].as_i64(), Some(id));
+    assert_eq!(activity["file_format"], "fit");
+    assert_eq!(activity["sport"], "cycling");
+    assert_eq!(activity["sport_raw"], "cycling/generic");
+    assert_eq!(activity["start_time"], "2026-01-10T08:00:30Z");
+    assert_eq!(activity["utc_offset_seconds"], 3600);
+    assert_eq!(activity["elapsed_s"], 900);
+    assert_eq!(activity["moving_s"], 880);
+    assert_eq!(activity["distance_m"], 7500.0);
+    assert_eq!(activity["avg_hr"], 132);
+    assert_eq!(activity["max_hr"], 155);
+    assert_eq!(activity["avg_power_w"], 205);
+    assert_eq!(activity["calories"], 150);
+}
+
+/// La stessa attività da FIT e TCX (inizio a +30 s) è un duplicato.
+#[sqlx::test]
+async fn same_activity_fit_and_tcx_is_duplicate(pool: PgPool) {
+    let app = common::test_app(pool);
+    let (_, token) = athlete(&app).await;
+
+    let first = import(&app, &token, &[("ride.tcx", RIDE_TCX.to_vec())]).await;
+    let ride_id = item(&first, "ride.tcx")["activity_id"].as_i64().unwrap();
+
+    let second = import(&app, &token, &[("ride.fit", RIDE_FIT.to_vec())]).await;
+    let dup = item(&second, "ride.fit");
+    assert_eq!(dup["status"], "duplicate", "{second}");
+    assert_eq!(dup["activity_id"].as_i64(), Some(ride_id));
+}
+
+/// Un FIT troncato subito dopo il messaggio `session` (senza CRC finale) viene
+/// comunque importato: la sessione è completa (scelta voluta).
+#[sqlx::test]
+async fn fit_truncated_after_session_is_imported(pool: PgPool) {
+    let app = common::test_app(pool);
+    let (_, token) = athlete(&app).await;
+
+    // Dopo la sessione inizia la definizione del messaggio `activity` (header 0x41)
+    assert_eq!(RIDE_FIT[RIDE_FIT_SESSION_END], 0x41);
+    let truncated = RIDE_FIT[..RIDE_FIT_SESSION_END].to_vec();
+    let result = import(&app, &token, &[("cut.fit", truncated)]).await;
+    assert_eq!(item(&result, "cut.fit")["status"], "imported", "{result}");
 }
 
 #[sqlx::test]
