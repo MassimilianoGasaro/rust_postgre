@@ -22,14 +22,15 @@ use axum::{
     extract::DefaultBodyLimit,
     http::{header, HeaderValue, Method},
     middleware::from_fn_with_state,
-    routing::{get, post},
+    routing::{delete, get, post},
     Router,
 };
 use sqlx::PgPool;
 use tower_http::cors::CorsLayer;
 
 use controllers::{
-    auth_controller, coach_link_controller, health_controller, import_controller, user_controller,
+    activity_controller, auth_controller, coach_link_controller, health_controller,
+    import_controller, user_controller,
 };
 
 /// AppState — stato condiviso tra tutti gli handler.
@@ -68,6 +69,7 @@ pub struct AppState {
 ///   /api/users  → route protette (JWT obbligatorio tramite middleware)
 ///   /api/coach-links, /api/athletes → route protette (relazione allenatore-atleta)
 ///   /api/imports → route protette (upload di file di attività ed esito)
+///   /api/activities → route protette (elenco e cancellazione attività)
 pub fn build_router(state: AppState) -> Router {
     // ── Route PUBBLICHE — accessibili senza token ──────────────────────────
     let auth_routes = Router::new()
@@ -135,13 +137,25 @@ pub fn build_router(state: AppState) -> Router {
             middleware::auth_middleware,
         ));
 
+    // Attività (protette da JWT):
+    //   GET    /api/activities      → elenco paginato con filtri
+    //   DELETE /api/activities/:id  → elimina un'attività propria (204)
+    let activity_routes = Router::new()
+        .route("/activities", get(activity_controller::list))
+        .route("/activities/:id", delete(activity_controller::delete))
+        .route_layer(from_fn_with_state(
+            state.clone(),
+            middleware::auth_middleware,
+        ));
+
     // ── Tutte le route applicative vivono sotto /api ───────────────────────
     let api = Router::new()
         .route("/health", get(health_controller::health))
         .nest("/auth", auth_routes)
         .nest("/users", user_routes)
         .merge(coach_link_routes)
-        .merge(import_routes);
+        .merge(import_routes)
+        .merge(activity_routes);
 
     let cors_origin = state.cors_origin.clone();
 

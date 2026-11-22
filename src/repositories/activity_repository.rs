@@ -4,10 +4,11 @@
 /// l'import esegue controllo dei duplicati e inserimento nella stessa transazione.
 
 use axum::http::StatusCode;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, NaiveDate, Utc};
 use sqlx::PgExecutor;
 
 use crate::errors::AppError;
+use crate::models::activity::Activity;
 use crate::parsing::{FileFormat, ParsedActivity};
 
 /// Codice dell'errore restituito da `insert` se il file è già stato importato.
@@ -136,4 +137,111 @@ pub async fn insert<'e>(
         }
         Err(e) => Err(AppError::Database(e)),
     }
+}
+
+/// Filtri dell'elenco attività. `from`/`to` sono date inclusive nel fuso `timezone`.
+pub struct ActivityFilter<'a> {
+    pub from: Option<NaiveDate>,
+    pub to: Option<NaiveDate>,
+    pub sport: Option<&'a str>,
+    /// Fuso IANA dell'atleta, con cui `start_time` viene convertito in data locale
+    pub timezone: &'a str,
+}
+
+/// Una pagina di attività dell'utente, dalla più recente (`start_time DESC`, poi `id DESC`).
+pub async fn list<'e>(
+    executor: impl PgExecutor<'e>,
+    user_id: i64,
+    filter: &ActivityFilter<'_>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<Activity>, AppError> {
+    let rows = sqlx::query_as!(
+        Activity,
+        r#"
+        SELECT id, user_id, source, sport, sport_raw, name, start_time,
+               utc_offset_seconds, elapsed_s, moving_s, distance_m,
+               elevation_gain_m, avg_hr, max_hr, avg_speed_mps, avg_power_w,
+               avg_cadence, calories, file_format, file_path, file_sha256, created_at
+        FROM activities
+        WHERE user_id = $1
+          AND ($2::date IS NULL OR (start_time AT TIME ZONE $4)::date >= $2)
+          AND ($3::date IS NULL OR (start_time AT TIME ZONE $4)::date <= $3)
+          AND ($5::text IS NULL OR sport = $5)
+        ORDER BY start_time DESC, id DESC
+        LIMIT $6 OFFSET $7
+        "#,
+        user_id,
+        filter.from,
+        filter.to,
+        filter.timezone,
+        filter.sport,
+        limit,
+        offset
+    )
+    .fetch_all(executor)
+    .await?;
+
+    Ok(rows)
+}
+
+/// Numero totale di attività dell'utente che soddisfano i filtri.
+pub async fn count<'e>(
+    executor: impl PgExecutor<'e>,
+    user_id: i64,
+    filter: &ActivityFilter<'_>,
+) -> Result<i64, AppError> {
+    let total = sqlx::query_scalar!(
+        r#"
+        SELECT COUNT(*) AS "total!"
+        FROM activities
+        WHERE user_id = $1
+          AND ($2::date IS NULL OR (start_time AT TIME ZONE $4)::date >= $2)
+          AND ($3::date IS NULL OR (start_time AT TIME ZONE $4)::date <= $3)
+          AND ($5::text IS NULL OR sport = $5)
+        "#,
+        user_id,
+        filter.from,
+        filter.to,
+        filter.timezone,
+        filter.sport
+    )
+    .fetch_one(executor)
+    .await?;
+
+    Ok(total)
+}
+
+/// Elimina l'attività se appartiene all'utente e ne ritorna il `file_path`.
+///
+/// `None` se l'attività non esiste o è di un altro utente (indistinguibili).
+pub async fn delete_owned<'e>(
+    executor: impl PgExecutor<'e>,
+    id: i64,
+    user_id: i64,
+) -> Result<Option<String>, AppError> {
+    let path = sqlx::query_scalar!(
+        "DELETE FROM activities WHERE id = $1 AND user_id = $2 RETURNING file_path",
+        id,
+        user_id
+    )
+    .fetch_optional(executor)
+    .await?;
+
+    Ok(path)
+}
+
+/// `true` se almeno un'attività referenzia ancora questo file.
+pub async fn file_path_in_use<'e>(
+    executor: impl PgExecutor<'e>,
+    file_path: &str,
+) -> Result<bool, AppError> {
+    let used = sqlx::query_scalar!(
+        r#"SELECT EXISTS(SELECT 1 FROM activities WHERE file_path = $1) AS "used!""#,
+        file_path
+    )
+    .fetch_one(executor)
+    .await?;
+
+    Ok(used)
 }
