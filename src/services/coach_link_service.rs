@@ -6,7 +6,6 @@
 /// Un link che non riguarda l'utente — oppure su cui l'utente non è l'attore
 /// designato dell'azione — risponde sempre `404 NOT_FOUND`: così non si può
 /// scoprire l'esistenza di link altrui.
-
 use axum::http::StatusCode;
 use sqlx::PgPool;
 
@@ -61,7 +60,11 @@ pub async fn request_coach(
     let coach_user = user_repository::find_by_email_or_username(pool, coach.trim())
         .await?
         .ok_or_else(|| {
-            AppError::coded(StatusCode::NOT_FOUND, "COACH_NOT_FOUND", "Coach non trovato")
+            AppError::coded(
+                StatusCode::NOT_FOUND,
+                "COACH_NOT_FOUND",
+                "Coach non trovato",
+            )
         })?;
 
     if Role::parse(&coach_user.role) != Some(Role::Coach) {

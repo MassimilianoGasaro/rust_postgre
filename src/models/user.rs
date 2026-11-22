@@ -4,7 +4,6 @@
 /// sqlx li usa per mappare automaticamente le righe del DB in struct Rust.
 /// NON esporre mai direttamente i models nelle risposte HTTP (c'è il DTO per quello):
 /// ad esempio, `password_hash` non deve mai uscire nelle risposte API!
-
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 

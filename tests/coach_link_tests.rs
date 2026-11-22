@@ -5,7 +5,7 @@ use rust_postgre::errors::AppError;
 use rust_postgre::middleware::AuthUser;
 use rust_postgre::models::user::Role;
 use rust_postgre::services::access_service;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sqlx::PgPool;
 
 use common::TestApp;
@@ -68,8 +68,14 @@ async fn athlete_requests_coach_by_username(pool: PgPool) {
     assert_eq!(status, StatusCode::CREATED, "{body}");
     assert!(body["id"].is_i64());
     assert_eq!(body["status"], "pending");
-    assert_eq!(body["athlete"], json!({"id": athlete_id, "username": "atleta"}));
-    assert_eq!(body["coach"], json!({"id": coach_id, "username": "allenatore"}));
+    assert_eq!(
+        body["athlete"],
+        json!({"id": athlete_id, "username": "atleta"})
+    );
+    assert_eq!(
+        body["coach"],
+        json!({"id": coach_id, "username": "allenatore"})
+    );
     assert!(body["requested_at"].is_string());
     assert!(body["responded_at"].is_null());
     assert!(body["ended_at"].is_null());
@@ -162,7 +168,11 @@ async fn concurrent_requests_yield_a_single_link(pool: PgPool) {
     let mut statuses = [r1.0, r2.0];
     statuses.sort();
     assert_eq!(statuses, [StatusCode::CREATED, StatusCode::CONFLICT]);
-    let loser = if r1.0 == StatusCode::CONFLICT { &r1.1 } else { &r2.1 };
+    let loser = if r1.0 == StatusCode::CONFLICT {
+        &r1.1
+    } else {
+        &r2.1
+    };
     assert_eq!(loser["code"], "COACH_LINK_EXISTS");
 }
 
@@ -176,7 +186,9 @@ async fn coach_accepts_then_athlete_appears_in_athletes(pool: PgPool) {
     let link_id = created["id"].as_i64().unwrap();
 
     // Finché è pending l'atleta non compare tra gli atleti del coach.
-    let (status, body) = app.request(Method::GET, "/api/athletes", Some(&coach), None).await;
+    let (status, body) = app
+        .request(Method::GET, "/api/athletes", Some(&coach), None)
+        .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body, json!([]));
 
@@ -186,7 +198,9 @@ async fn coach_accepts_then_athlete_appears_in_athletes(pool: PgPool) {
     assert!(body["responded_at"].is_string());
     assert!(body["ended_at"].is_null());
 
-    let (status, body) = app.request(Method::GET, "/api/athletes", Some(&coach), None).await;
+    let (status, body) = app
+        .request(Method::GET, "/api/athletes", Some(&coach), None)
+        .await;
     assert_eq!(status, StatusCode::OK);
     let list = body.as_array().unwrap();
     assert_eq!(list.len(), 1);
@@ -200,7 +214,9 @@ async fn athletes_endpoint_is_coach_only(pool: PgPool) {
     let app = common::test_app(pool);
     let (_, athlete) = app.register("a@example.com", "atleta", "athlete").await;
 
-    let (status, body) = app.request(Method::GET, "/api/athletes", Some(&athlete), None).await;
+    let (status, body) = app
+        .request(Method::GET, "/api/athletes", Some(&athlete), None)
+        .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(body["code"], "ROLE_FORBIDDEN");
 
@@ -259,7 +275,9 @@ async fn athlete_revokes_active_then_can_request_again(pool: PgPool) {
     assert_eq!(body["status"], "revoked");
     assert!(body["ended_at"].is_string());
 
-    let (_, list) = app.request(Method::GET, "/api/athletes", Some(&coach), None).await;
+    let (_, list) = app
+        .request(Method::GET, "/api/athletes", Some(&coach), None)
+        .await;
     assert_eq!(list, json!([]));
 
     let (status, body) = request_link(&app, &athlete, "allenatore").await;
@@ -329,7 +347,11 @@ async fn non_designated_actor_gets_404(pool: PgPool) {
     let link_id = created["id"].as_i64().unwrap();
 
     // Parte del link ma non l'attore designato dell'azione.
-    for (token, action) in [(&athlete, "accept"), (&athlete, "reject"), (&coach, "cancel")] {
+    for (token, action) in [
+        (&athlete, "accept"),
+        (&athlete, "reject"),
+        (&coach, "cancel"),
+    ] {
         let (status, body) = act(&app, token, link_id, action).await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{action}");
         assert_eq!(body["code"], "NOT_FOUND");
@@ -341,7 +363,9 @@ async fn non_designated_actor_gets_404(pool: PgPool) {
     assert_eq!(body["code"], "NOT_FOUND");
 
     // Il link non è stato toccato.
-    let (_, list) = app.request(Method::GET, "/api/coach-links", Some(&athlete), None).await;
+    let (_, list) = app
+        .request(Method::GET, "/api/coach-links", Some(&athlete), None)
+        .await;
     assert_eq!(list[0]["status"], "pending");
 }
 
@@ -372,7 +396,9 @@ async fn list_links_by_role_and_status(pool: PgPool) {
     request_link(&app, &athlete2, "altro").await;
 
     // Atleta: solo i propri, requested_at DESC.
-    let (status, body) = app.request(Method::GET, "/api/coach-links", Some(&athlete), None).await;
+    let (status, body) = app
+        .request(Method::GET, "/api/coach-links", Some(&athlete), None)
+        .await;
     assert_eq!(status, StatusCode::OK);
     let ids: Vec<i64> = body
         .as_array()
@@ -383,15 +409,24 @@ async fn list_links_by_role_and_status(pool: PgPool) {
     assert_eq!(ids, vec![second_id, first_id]);
 
     // Coach: solo quelli verso di sé.
-    let (_, body) = app.request(Method::GET, "/api/coach-links", Some(&coach), None).await;
+    let (_, body) = app
+        .request(Method::GET, "/api/coach-links", Some(&coach), None)
+        .await;
     assert_eq!(body.as_array().unwrap().len(), 2);
-    let (_, body) = app.request(Method::GET, "/api/coach-links", Some(&coach2), None).await;
+    let (_, body) = app
+        .request(Method::GET, "/api/coach-links", Some(&coach2), None)
+        .await;
     assert_eq!(body.as_array().unwrap().len(), 1);
     assert_eq!(body[0]["athlete"]["username"], "atleta2");
 
     // Filtro per stato.
     let (status, body) = app
-        .request(Method::GET, "/api/coach-links?status=pending", Some(&athlete), None)
+        .request(
+            Method::GET,
+            "/api/coach-links?status=pending",
+            Some(&athlete),
+            None,
+        )
         .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body.as_array().unwrap().len(), 1);
@@ -399,7 +434,12 @@ async fn list_links_by_role_and_status(pool: PgPool) {
 
     // Stato sconosciuto → 400.
     let (status, body) = app
-        .request(Method::GET, "/api/coach-links?status=bogus", Some(&athlete), None)
+        .request(
+            Method::GET,
+            "/api/coach-links?status=bogus",
+            Some(&athlete),
+            None,
+        )
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(body["code"], "VALIDATION_FAILED");
@@ -408,10 +448,17 @@ async fn list_links_by_role_and_status(pool: PgPool) {
 #[sqlx::test]
 async fn coach_links_require_token(pool: PgPool) {
     let app = common::test_app(pool);
-    let (status, _) = app.request(Method::GET, "/api/coach-links", None, None).await;
+    let (status, _) = app
+        .request(Method::GET, "/api/coach-links", None, None)
+        .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     let (status, _) = app
-        .request(Method::POST, "/api/coach-links", None, Some(json!({"coach": "x"})))
+        .request(
+            Method::POST,
+            "/api/coach-links",
+            None,
+            Some(json!({"coach": "x"})),
+        )
         .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
@@ -422,7 +469,12 @@ async fn malformed_body_is_400_validation_failed(pool: PgPool) {
     let (_, athlete) = app.register("a@example.com", "atleta", "athlete").await;
 
     let (status, body) = app
-        .request(Method::POST, "/api/coach-links", Some(&athlete), Some(json!({"wrong": 1})))
+        .request(
+            Method::POST,
+            "/api/coach-links",
+            Some(&athlete),
+            Some(json!({"wrong": 1})),
+        )
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(body["code"], "VALIDATION_FAILED");
@@ -436,9 +488,16 @@ async fn resolve_own_id_ok(pool: PgPool) {
     let (athlete_id, _) = app.register("a@example.com", "atleta", "athlete").await;
     let me = viewer(athlete_id, Role::Athlete);
 
-    assert_eq!(access_service::resolve_target(&pool, &me, None).await.unwrap(), athlete_id);
     assert_eq!(
-        access_service::resolve_target(&pool, &me, Some(athlete_id)).await.unwrap(),
+        access_service::resolve_target(&pool, &me, None)
+            .await
+            .unwrap(),
+        athlete_id
+    );
+    assert_eq!(
+        access_service::resolve_target(&pool, &me, Some(athlete_id))
+            .await
+            .unwrap(),
         athlete_id
     );
 }
@@ -452,11 +511,18 @@ async fn resolve_coach_active_ok(pool: PgPool) {
 
     let me = viewer(coach_id, Role::Coach);
     assert_eq!(
-        access_service::resolve_target(&pool, &me, Some(athlete_id)).await.unwrap(),
+        access_service::resolve_target(&pool, &me, Some(athlete_id))
+            .await
+            .unwrap(),
         athlete_id
     );
     // Senza athlete_id il coach vede i propri dati.
-    assert_eq!(access_service::resolve_target(&pool, &me, None).await.unwrap(), coach_id);
+    assert_eq!(
+        access_service::resolve_target(&pool, &me, None)
+            .await
+            .unwrap(),
+        coach_id
+    );
 }
 
 #[sqlx::test]
@@ -504,7 +570,9 @@ async fn coach_loses_access_after_revoke(pool: PgPool) {
     let me = viewer(coach_id, Role::Coach);
 
     assert_eq!(
-        access_service::resolve_target(&pool, &me, Some(athlete_id)).await.unwrap(),
+        access_service::resolve_target(&pool, &me, Some(athlete_id))
+            .await
+            .unwrap(),
         athlete_id
     );
 

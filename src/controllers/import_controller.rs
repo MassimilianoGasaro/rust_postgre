@@ -9,19 +9,19 @@
 /// è scritto chunk per chunk in un file temporaneo sotto `UPLOAD_DIR/tmp/`.
 /// La dimensione massima del corpo (`MAX_UPLOAD_BYTES`) è imposta dal
 /// `DefaultBodyLimit` della route.
-
 use std::path::Path;
 
 use axum::{
+    Json,
     extract::{
-        multipart::{MultipartError, MultipartRejection},
         Multipart, State,
+        multipart::{MultipartError, MultipartRejection},
     },
     http::StatusCode,
-    Json,
 };
 use tokio::io::AsyncWriteExt;
 
+use crate::AppState;
 use crate::dto::import::ImportDto;
 use crate::errors::AppError;
 use crate::extractors::AppPath;
@@ -29,7 +29,6 @@ use crate::middleware::AuthUser;
 use crate::models::user::Role;
 use crate::parsing::archive::ArchiveLimits;
 use crate::services::import_service::{self, UploadedFile};
-use crate::AppState;
 
 /// Nome del campo multipart che contiene i file.
 const FILES_FIELD: &str = "files";
@@ -43,7 +42,11 @@ pub async fn upload(
     // Il ruolo si verifica prima di leggere il corpo
     auth.require_role(Role::Athlete)?;
     let mut multipart = multipart.map_err(|rejection| {
-        AppError::coded(rejection.status(), "VALIDATION_FAILED", rejection.body_text())
+        AppError::coded(
+            rejection.status(),
+            "VALIDATION_FAILED",
+            rejection.body_text(),
+        )
     })?;
 
     let files = receive_files(&state.upload_dir, &mut multipart).await?;
@@ -70,7 +73,9 @@ pub async fn list(
     State(state): State<AppState>,
     auth: AuthUser,
 ) -> Result<Json<Vec<ImportDto>>, AppError> {
-    Ok(Json(import_service::list_imports(&state.pool, &auth).await?))
+    Ok(Json(
+        import_service::list_imports(&state.pool, &auth).await?,
+    ))
 }
 
 /// GET /imports/:id
@@ -79,7 +84,9 @@ pub async fn get(
     auth: AuthUser,
     AppPath(id): AppPath<i64>,
 ) -> Result<Json<ImportDto>, AppError> {
-    Ok(Json(import_service::get_import(&state.pool, &auth, id).await?))
+    Ok(Json(
+        import_service::get_import(&state.pool, &auth, id).await?,
+    ))
 }
 
 /// Scrive ogni campo `files` in un file temporaneo sotto `UPLOAD_DIR/tmp/`.
@@ -91,7 +98,9 @@ async fn receive_files(
     multipart: &mut Multipart,
 ) -> Result<Vec<UploadedFile>, AppError> {
     let tmp_dir = upload_dir.join("tmp");
-    tokio::fs::create_dir_all(&tmp_dir).await.map_err(io_error)?;
+    tokio::fs::create_dir_all(&tmp_dir)
+        .await
+        .map_err(io_error)?;
 
     let mut files = Vec::new();
     while let Some(mut field) = multipart.next_field().await.map_err(multipart_error)? {

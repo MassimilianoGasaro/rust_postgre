@@ -1,5 +1,4 @@
 /// repositories/import_repository.rs — Query SQL per gli import e i loro item
-
 use sqlx::PgPool;
 
 use crate::errors::AppError;
@@ -24,7 +23,11 @@ pub async fn create(pool: &PgPool, user_id: i64) -> Result<Import, AppError> {
 }
 
 /// Import per id, solo se appartiene all'utente.
-pub async fn find_for_user(pool: &PgPool, id: i64, user_id: i64) -> Result<Option<Import>, AppError> {
+pub async fn find_for_user(
+    pool: &PgPool,
+    id: i64,
+    user_id: i64,
+) -> Result<Option<Import>, AppError> {
     let import = sqlx::query_as!(
         Import,
         r#"

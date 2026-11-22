@@ -10,20 +10,19 @@
 /// Gli handler protetti ricevono i claims così:
 ///   `Extension(claims): Extension<Claims>`
 /// e sanno chi è l'utente autenticato senza fare query al DB.
-
 use axum::{
     async_trait,
     extract::{FromRequestParts, Request, State},
-    http::{header::AUTHORIZATION, request::Parts, StatusCode},
+    http::{StatusCode, header::AUTHORIZATION, request::Parts},
     middleware::Next,
     response::Response,
 };
 
+use crate::AppState;
 use crate::dto::auth::Claims;
 use crate::errors::AppError;
 use crate::models::user::Role;
 use crate::services::auth_service;
-use crate::AppState;
 
 /// Middleware che verifica il JWT su ogni request alle route protette.
 ///
@@ -42,9 +41,9 @@ pub async fn auth_middleware(
         .ok_or_else(|| AppError::Unauthorized("Header Authorization mancante".to_string()))?;
 
     // Il formato atteso è "Bearer <token>"
-    let token = auth_header
-        .strip_prefix("Bearer ")
-        .ok_or_else(|| AppError::Unauthorized("Formato token non valido. Usa: Bearer <token>".to_string()))?;
+    let token = auth_header.strip_prefix("Bearer ").ok_or_else(|| {
+        AppError::Unauthorized("Formato token non valido. Usa: Bearer <token>".to_string())
+    })?;
 
     // Valida il JWT — se scaduto o manomesso → AppError::Unauthorized
     let claims = auth_service::validate_jwt(token, &state.jwt_secret)?;
@@ -112,7 +111,10 @@ mod tests {
 
     #[test]
     fn require_role_allows_matching_role_only() {
-        let coach = AuthUser { id: 1, role: Role::Coach };
+        let coach = AuthUser {
+            id: 1,
+            role: Role::Coach,
+        };
         assert!(coach.require_role(Role::Coach).is_ok());
 
         match coach.require_role(Role::Athlete) {

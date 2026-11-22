@@ -2,7 +2,6 @@
 ///
 /// Un import corrisponde a un upload (uno o più file, anche ZIP) elaborato in
 /// background; ogni file prodotto dall'upload ha il suo `import_item`.
-
 use chrono::{DateTime, Utc};
 
 /// Stato dell'import. Nel DB è la stringa minuscola (vincolo CHECK).

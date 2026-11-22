@@ -7,7 +7,6 @@
 ///
 /// Principio: il service è l'unico posto dove si prende la "decisione".
 /// Il repository esegue solo SQL, il controller gestisce solo HTTP.
-
 use std::path::Path;
 
 use axum::http::StatusCode;
@@ -96,7 +95,9 @@ pub async fn update_me(
     }
     if let Some(language) = &req.language {
         if !LANGUAGES.contains(&language.as_str()) {
-            return Err(validation_error("language non valida: valori ammessi 'it', 'en'"));
+            return Err(validation_error(
+                "language non valida: valori ammessi 'it', 'en'",
+            ));
         }
     }
     if let Some(Some(sex)) = &req.sex {

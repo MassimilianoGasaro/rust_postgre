@@ -7,12 +7,12 @@
 #![allow(dead_code)] // ogni file di test usa solo una parte degli helper
 
 use axum::{
-    body::Body,
-    http::{header, Method, Request, StatusCode},
     Router,
+    body::Body,
+    http::{Method, Request, StatusCode, header},
 };
 use http_body_util::BodyExt;
-use rust_postgre::{build_router, AppState};
+use rust_postgre::{AppState, build_router};
 use sqlx::PgPool;
 use tower::ServiceExt;
 
@@ -128,7 +128,11 @@ impl TestApp {
 
     /// `POST /api/imports` con un campo multipart `files` per ogni elemento
     /// `(nome file, contenuto)`; ritorna status e corpo JSON.
-    pub async fn upload(&self, token: &str, files: &[(&str, Vec<u8>)]) -> (StatusCode, serde_json::Value) {
+    pub async fn upload(
+        &self,
+        token: &str,
+        files: &[(&str, Vec<u8>)],
+    ) -> (StatusCode, serde_json::Value) {
         let parts: Vec<(&str, &str, &[u8])> = files
             .iter()
             .map(|(name, bytes)| ("files", *name, bytes.as_slice()))
@@ -191,7 +195,12 @@ impl TestApp {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         loop {
             let (status, body) = self
-                .request(Method::GET, &format!("/api/imports/{id}"), Some(token), None)
+                .request(
+                    Method::GET,
+                    &format!("/api/imports/{id}"),
+                    Some(token),
+                    None,
+                )
                 .await;
             assert_eq!(status, StatusCode::OK, "lettura import fallita: {body}");
             if body["status"] == "completed" {

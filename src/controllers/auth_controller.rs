@@ -8,8 +8,7 @@
 ///
 /// NON contengono logica di business — quella sta nei services.
 /// NON fanno query al DB — le fa il repository.
-
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{Json, extract::State, http::StatusCode};
 
 use crate::dto::auth::{LoginRequest, RegisterRequest};
 use crate::errors::AppError;

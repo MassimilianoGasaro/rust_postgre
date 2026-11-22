@@ -5,14 +5,14 @@
 //! viene materializzato per intero in memoria. Le metriche sono aggregate
 //! sulle sessioni (un file può contenerne più d'una, ad es. un triathlon).
 
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use chrono::{DateTime, Local, NaiveDate, TimeZone, Utc};
 use fitparser::de::{FitObject, FitStreamProcessor};
 use fitparser::profile::MesgNum;
 use fitparser::{FitDataRecord, Value};
 
-use super::{seconds_to_i32, weighted_mean, ParseError, ParsedActivity, Sport};
+use super::{ParseError, ParsedActivity, Sport, seconds_to_i32, weighted_mean};
 
 /// Numero massimo di sessioni accettate (difesa da input ostili).
 const MAX_SESSIONS: usize = 1000;
@@ -240,10 +240,13 @@ fn build(
     utc_offset_seconds: Option<i32>,
 ) -> Result<ParsedActivity, ParseError> {
     // Più sessioni: lo sport è quello della sessione più lunga (a parità, la prima)
-    let Some(main) = sessions
-        .iter()
-        .reduce(|best, s| if s.elapsed() > best.elapsed() { s } else { best })
-    else {
+    let Some(main) = sessions.iter().reduce(|best, s| {
+        if s.elapsed() > best.elapsed() {
+            s
+        } else {
+            best
+        }
+    }) else {
         return Err(ParseError::Empty);
     };
     let Some(start_time) = sessions.iter().filter_map(|s| s.start).min() else {
@@ -303,7 +306,6 @@ fn build(
     })
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -313,8 +315,8 @@ mod tests {
 
     fn crc16(data: &[u8]) -> u16 {
         const T: [u16; 16] = [
-            0x0000, 0xCC01, 0xD801, 0x1400, 0xF001, 0x3C00, 0x2800, 0xE401, 0xA001, 0x6C00,
-            0x7800, 0xB401, 0x5000, 0x9C01, 0x8801, 0x4400,
+            0x0000, 0xCC01, 0xD801, 0x1400, 0xF001, 0x3C00, 0x2800, 0xE401, 0xA001, 0x6C00, 0x7800,
+            0xB401, 0x5000, 0x9C01, 0x8801, 0x4400,
         ];
         let mut crc = 0u16;
         for &b in data {

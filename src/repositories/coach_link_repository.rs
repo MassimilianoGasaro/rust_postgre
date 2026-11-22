@@ -4,7 +4,6 @@
 /// UPDATE condizionali (`WHERE status = <atteso>`): controllo e scrittura
 /// avvengono in un'unica istruzione atomica, quindi due richieste
 /// concorrenti sullo stesso link non possono avere entrambe successo.
-
 use axum::http::StatusCode;
 use sqlx::PgPool;
 

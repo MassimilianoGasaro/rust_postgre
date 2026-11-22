@@ -2,7 +2,6 @@
 ///
 /// Rispecchia la tabella `coach_links`, arricchita con gli username delle
 /// due parti (join con `users`) perché servono sempre insieme al link.
-
 use chrono::{DateTime, Utc};
 
 /// Stato del link. Nel DB è la stringa minuscola (vincolo CHECK).

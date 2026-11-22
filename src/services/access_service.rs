@@ -4,7 +4,6 @@
 /// ogni endpoint che accetta un `athlete_id` opzionale deve passare da
 /// `resolve_target`. Un coach vede i dati di un atleta solo con un link
 /// `active`; ogni altro caso → `403 ATHLETE_ACCESS_DENIED`.
-
 use axum::http::StatusCode;
 use sqlx::PgPool;
 

@@ -4,10 +4,9 @@
 /// tipizzata. Centralizzare la config evita di chiamare std::env::var()
 /// sparso ovunque nel codice, rendendo gli errori di config evidenti
 /// all'avvio dell'app (fail-fast).
-
 use std::path::PathBuf;
 
-use sqlx::{postgres::PgPoolOptions, PgPool};
+use sqlx::{PgPool, postgres::PgPoolOptions};
 
 /// Legge una variabile opzionale: assente o vuota (es. `TLS_CERT_PATH=`) → None.
 fn optional_env(name: &str) -> Option<String> {
@@ -41,19 +40,16 @@ impl Config {
     /// Chiama .expect() intenzionalmente: se manca una var, l'app NON deve avviarsi.
     pub fn from_env() -> Self {
         Self {
-            database_url: std::env::var("DATABASE_URL")
-                .expect("DATABASE_URL mancante nel .env"),
+            database_url: std::env::var("DATABASE_URL").expect("DATABASE_URL mancante nel .env"),
 
-            jwt_secret: std::env::var("JWT_SECRET")
-                .expect("JWT_SECRET mancante nel .env"),
+            jwt_secret: std::env::var("JWT_SECRET").expect("JWT_SECRET mancante nel .env"),
 
             jwt_expiration_hours: std::env::var("JWT_EXPIRATION_HOURS")
                 .unwrap_or_else(|_| "24".to_string())
                 .parse()
                 .expect("JWT_EXPIRATION_HOURS deve essere un numero"),
 
-            server_host: std::env::var("SERVER_HOST")
-                .unwrap_or_else(|_| "127.0.0.1".to_string()),
+            server_host: std::env::var("SERVER_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
 
             server_port: std::env::var("SERVER_PORT")
                 .unwrap_or_else(|_| "3000".to_string())

@@ -3,7 +3,6 @@
 /// Tutte le query filtrano per utente, intervallo di date (inclusivo, nel fuso
 /// `timezone`) e sport opzionale; `moving_s` ricade su `elapsed_s` se assente
 /// e le metriche nulle valgono 0.
-
 use chrono::NaiveDate;
 use sqlx::PgExecutor;
 

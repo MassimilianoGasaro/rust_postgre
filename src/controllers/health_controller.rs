@@ -2,9 +2,8 @@
 ///
 /// Pubblico (nessun JWT): serve a load balancer, orchestratori e al client
 /// per verificare che il server risponda.
-
 use axum::Json;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// GET /api/health
 ///

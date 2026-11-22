@@ -1,7 +1,7 @@
 mod common;
 
 use axum::http::{Method, StatusCode};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sqlx::PgPool;
 
 use common::TestApp;
@@ -11,7 +11,8 @@ const RIDE_TCX: &[u8] = include_bytes!("fixtures/ride.tcx");
 
 /// Registra un atleta e ne ritorna `(id, token)`.
 async fn athlete(app: &TestApp) -> (i64, String) {
-    app.register("athlete@example.com", "athlete", "athlete").await
+    app.register("athlete@example.com", "athlete", "athlete")
+        .await
 }
 
 /// Carica i file, attende la fine dell'import e ritorna gli id delle attività create.
@@ -55,7 +56,9 @@ fn assert_validation_failed(status: StatusCode, body: &Value) {
 
 /// Crea un coach e lo collega (link `active`) all'atleta; ritorna `(id, token)` del coach.
 async fn linked_coach(app: &TestApp, athlete_token: &str) -> (i64, String) {
-    let (coach_id, coach_token) = app.register("coach@example.com", "allenatore", "coach").await;
+    let (coach_id, coach_token) = app
+        .register("coach@example.com", "allenatore", "coach")
+        .await;
     let (status, body) = app
         .request(
             Method::POST,
@@ -86,7 +89,10 @@ async fn list_own_activities_desc(pool: PgPool) {
     let imported = import(
         &app,
         &token,
-        &[("run.gpx", RUN_GPX.to_vec()), ("ride.tcx", RIDE_TCX.to_vec())],
+        &[
+            ("run.gpx", RUN_GPX.to_vec()),
+            ("ride.tcx", RIDE_TCX.to_vec()),
+        ],
     )
     .await;
     assert_eq!(imported.len(), 2);
@@ -130,7 +136,12 @@ async fn list_filters_by_date_and_sport(pool: PgPool) {
     let count = |body: &Value| body["total"].as_i64().unwrap();
 
     // Estremi inclusivi, nel fuso dell'atleta
-    let (status, body) = get(&app, &token, "/api/activities?from=2026-01-10&to=2026-01-10").await;
+    let (status, body) = get(
+        &app,
+        &token,
+        "/api/activities?from=2026-01-10&to=2026-01-10",
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(count(&body), 2);
     let starts: Vec<&str> = body["items"]
@@ -150,7 +161,12 @@ async fn list_filters_by_date_and_sport(pool: PgPool) {
     // Sport (il totale rispetta il filtro)
     let (_, body) = get(&app, &token, "/api/activities?sport=running").await;
     assert_eq!(count(&body), 3);
-    let (_, body) = get(&app, &token, "/api/activities?sport=cycling&from=2026-01-10&to=2026-01-10").await;
+    let (_, body) = get(
+        &app,
+        &token,
+        "/api/activities?sport=cycling&from=2026-01-10&to=2026-01-10",
+    )
+    .await;
     assert_eq!(count(&body), 1);
     assert_eq!(body["items"][0]["sport"], "cycling");
     let (_, body) = get(&app, &token, "/api/activities?sport=swimming").await;
@@ -163,9 +179,19 @@ async fn list_filters_by_date_and_sport(pool: PgPool) {
         .execute(&app.pool)
         .await
         .unwrap();
-    let (_, body) = get(&app, &token, "/api/activities?from=2026-01-09&to=2026-01-09").await;
+    let (_, body) = get(
+        &app,
+        &token,
+        "/api/activities?from=2026-01-09&to=2026-01-09",
+    )
+    .await;
     assert_eq!(count(&body), 2);
-    let (_, body) = get(&app, &token, "/api/activities?from=2026-01-10&to=2026-01-10").await;
+    let (_, body) = get(
+        &app,
+        &token,
+        "/api/activities?from=2026-01-10&to=2026-01-10",
+    )
+    .await;
     assert_eq!(count(&body), 2);
 
     // Parametri non validi → 400 VALIDATION_FAILED
@@ -190,14 +216,28 @@ async fn list_paginates_with_total(pool: PgPool) {
     let app = common::test_app(pool);
     let (id, token) = athlete(&app).await;
     for n in 1..=5 {
-        insert(&app.pool, id, "running", &format!("2026-01-0{n}T10:00:00Z"), n).await;
+        insert(
+            &app.pool,
+            id,
+            "running",
+            &format!("2026-01-0{n}T10:00:00Z"),
+            n,
+        )
+        .await;
     }
 
     // Dal più recente: giorno 5, 4 | 3, 2 | 1
     let (_, p1) = get(&app, &token, "/api/activities?per_page=2").await;
     let (_, p2) = get(&app, &token, "/api/activities?per_page=2&page=2").await;
     let (_, p3) = get(&app, &token, "/api/activities?per_page=2&page=3").await;
-    assert_eq!((p1["total"].as_i64(), p1["page"].as_i64(), p1["per_page"].as_i64()), (Some(5), Some(1), Some(2)));
+    assert_eq!(
+        (
+            p1["total"].as_i64(),
+            p1["page"].as_i64(),
+            p1["per_page"].as_i64()
+        ),
+        (Some(5), Some(1), Some(2))
+    );
     assert_eq!(p2["page"], 2);
     let days = |p: &Value| -> Vec<String> {
         p["items"]
@@ -253,7 +293,9 @@ async fn coach_without_link_gets_403_athlete_access_denied(pool: PgPool) {
     let app = common::test_app(pool);
     let (athlete_id, athlete_token) = athlete(&app).await;
     insert(&app.pool, athlete_id, "running", "2026-01-10T07:00:00Z", 1).await;
-    let (_, coach_token) = app.register("coach@example.com", "allenatore", "coach").await;
+    let (_, coach_token) = app
+        .register("coach@example.com", "allenatore", "coach")
+        .await;
 
     let uri = format!("/api/activities?athlete_id={athlete_id}");
     let (status, body) = get(&app, &coach_token, &uri).await;
@@ -282,7 +324,12 @@ async fn athlete_cannot_list_other_athlete(pool: PgPool) {
     let (_, b_token) = app.register("b@example.com", "atleta-b", "athlete").await;
     insert(&app.pool, a_id, "running", "2026-01-10T07:00:00Z", 1).await;
 
-    let (status, body) = get(&app, &b_token, &format!("/api/activities?athlete_id={a_id}")).await;
+    let (status, body) = get(
+        &app,
+        &b_token,
+        &format!("/api/activities?athlete_id={a_id}"),
+    )
+    .await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
     assert_eq!(body["code"], "ATHLETE_ACCESS_DENIED");
 }
@@ -304,7 +351,12 @@ async fn delete_own_activity_removes_file(pool: PgPool) {
     assert!(on_disk.exists());
 
     let (status, body) = app
-        .request(Method::DELETE, &format!("/api/activities/{activity_id}"), Some(&token), None)
+        .request(
+            Method::DELETE,
+            &format!("/api/activities/{activity_id}"),
+            Some(&token),
+            None,
+        )
         .await;
     assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
     assert!(!on_disk.exists(), "il file originale doveva essere rimosso");
@@ -314,7 +366,12 @@ async fn delete_own_activity_removes_file(pool: PgPool) {
 
     // Già eliminata → 404
     let (status, body) = app
-        .request(Method::DELETE, &format!("/api/activities/{activity_id}"), Some(&token), None)
+        .request(
+            Method::DELETE,
+            &format!("/api/activities/{activity_id}"),
+            Some(&token),
+            None,
+        )
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
     assert_eq!(body["code"], "NOT_FOUND");
@@ -336,7 +393,9 @@ async fn cannot_delete_others_activity_404(pool: PgPool) {
 
     // Né un altro atleta né il coach collegato possono eliminarla
     for intruder in [&other_token, &coach_token] {
-        let (status, body) = app.request(Method::DELETE, &uri, Some(intruder), None).await;
+        let (status, body) = app
+            .request(Method::DELETE, &uri, Some(intruder), None)
+            .await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
         assert_eq!(body["code"], "NOT_FOUND");
     }
@@ -368,7 +427,12 @@ async fn per_page_over_100_is_400(pool: PgPool) {
     let (_, token) = athlete(&app).await;
 
     for per_page in ["101", "0", "-5"] {
-        let (status, body) = get(&app, &token, &format!("/api/activities?per_page={per_page}")).await;
+        let (status, body) = get(
+            &app,
+            &token,
+            &format!("/api/activities?per_page={per_page}"),
+        )
+        .await;
         assert_validation_failed(status, &body);
     }
 }

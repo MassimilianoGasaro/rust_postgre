@@ -64,7 +64,9 @@ mod tests {
 
     #[test]
     fn elevation_gain_uses_hysteresis() {
-        let alts = [100., 101., 103., 102., 106., 106., 104., 110., 111., 111., 112.];
+        let alts = [
+            100., 101., 103., 102., 106., 106., 104., 110., 111., 111., 112.,
+        ];
         assert_eq!(elevation_gain(&alts), 13.0);
     }
 

@@ -5,7 +5,6 @@
 /// - Il client non deve mai vedere `password_hash`
 /// - Le validazioni di input sono diverse da quelle del DB
 /// - Possiamo cambiare il DB senza cambiare il contratto API
-
 use serde::{Deserialize, Serialize};
 
 use crate::models::user::Role;

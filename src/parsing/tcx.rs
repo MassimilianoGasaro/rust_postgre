@@ -6,13 +6,13 @@
 //! quello del trackpoint.
 
 use chrono::{DateTime, Utc};
-use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
+use quick_xml::events::{BytesStart, Event};
 
 use super::metrics::elevation_gain;
 use super::{
-    check_depth, finite_number, local_name, parse_time, rounded_mean, seconds_to_i32,
-    weighted_mean, ParseError, ParsedActivity, Sport,
+    ParseError, ParsedActivity, Sport, check_depth, finite_number, local_name, parse_time,
+    rounded_mean, seconds_to_i32, weighted_mean,
 };
 
 /// Dati di un giro (`<Lap>`).
@@ -163,7 +163,9 @@ pub fn parse(bytes: &[u8]) -> Result<ParsedActivity, ParseError> {
             }
             Event::End(_) => state.end(),
             Event::Text(t) => {
-                let text = t.unescape().map_err(|e| ParseError::Malformed(e.to_string()))?;
+                let text = t
+                    .unescape()
+                    .map_err(|e| ParseError::Malformed(e.to_string()))?;
                 state.text(&text)?;
             }
             Event::CData(c) => state.text(&String::from_utf8_lossy(&c))?,
@@ -255,7 +257,10 @@ mod tests {
         assert_eq!(a.sport, Sport::Cycling);
         assert_eq!(a.sport_raw, "Biking");
         assert_eq!(a.name, None);
-        assert_eq!(a.start_time, Utc.with_ymd_and_hms(2026, 1, 10, 8, 0, 0).unwrap());
+        assert_eq!(
+            a.start_time,
+            Utc.with_ymd_and_hms(2026, 1, 10, 8, 0, 0).unwrap()
+        );
         assert_eq!(a.utc_offset_seconds, None);
         assert_eq!(a.elapsed_s, 900);
         assert_eq!(a.moving_s, Some(900));
@@ -330,7 +335,10 @@ mod tests {
     fn truncated_tcx_is_malformed() {
         let full = include_bytes!("../../tests/fixtures/ride.tcx");
         // Taglio arbitrario (anche in mezzo a un tag)
-        assert_eq!(parse(&full[..full.len() * 2 / 3]).unwrap_err().code(), "PARSE_ERROR");
+        assert_eq!(
+            parse(&full[..full.len() * 2 / 3]).unwrap_err().code(),
+            "PARSE_ERROR"
+        );
         // Taglio pulito subito dopo un elemento chiuso
         let text = std::str::from_utf8(full).unwrap();
         let end = text.find("</Trackpoint>").unwrap() + "</Trackpoint>".len();

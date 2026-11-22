@@ -7,7 +7,7 @@ use std::io::Read;
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
-use rust_postgre::parsing::{parse, FileFormat, ParsedActivity, Sport};
+use rust_postgre::parsing::{FileFormat, ParsedActivity, Sport, parse};
 
 /// Legge un file da `docs/files/`; se manca il test fallisce con un messaggio chiaro.
 fn read_real(name: &str) -> Vec<u8> {
@@ -50,7 +50,10 @@ fn parse_ok(format: FileFormat, bytes: &[u8]) -> ParsedActivity {
 #[test]
 #[ignore]
 fn real_coros_fit_parses() {
-    let a = parse_ok(FileFormat::Fit, &read_real("481934560924303460_f9d4fbc5e2.fit"));
+    let a = parse_ok(
+        FileFormat::Fit,
+        &read_real("481934560924303460_f9d4fbc5e2.fit"),
+    );
     println!(
         "coros: sport={:?} raw={} distance_m={:?} elapsed_s={} moving_s={:?} start={}",
         a.sport, a.sport_raw, a.distance_m, a.elapsed_s, a.moving_s, a.start_time
@@ -85,5 +88,8 @@ fn real_garmin_zip_fit_matches_tcx() {
         fit.distance_m.expect("distanza FIT"),
         tcx.distance_m.expect("distanza TCX"),
     );
-    assert!(dt > 0.0 && (df - dt).abs() / dt <= 0.02, "distanze: fit {df} tcx {dt}");
+    assert!(
+        dt > 0.0 && (df - dt).abs() / dt <= 0.02,
+        "distanze: fit {df} tcx {dt}"
+    );
 }

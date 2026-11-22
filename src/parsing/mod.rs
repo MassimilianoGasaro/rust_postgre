@@ -221,7 +221,10 @@ mod tests {
     #[test]
     fn from_filename_is_case_insensitive() {
         assert_eq!(FileFormat::from_filename("a.GPX"), Some(FileFormat::Gpx));
-        assert_eq!(FileFormat::from_filename("dir.v2/a.Tcx"), Some(FileFormat::Tcx));
+        assert_eq!(
+            FileFormat::from_filename("dir.v2/a.Tcx"),
+            Some(FileFormat::Tcx)
+        );
         assert_eq!(FileFormat::from_filename("a.fit"), Some(FileFormat::Fit));
         assert_eq!(FileFormat::from_filename("a.zip"), None);
         assert_eq!(FileFormat::from_filename("noext"), None);
@@ -265,6 +268,9 @@ mod tests {
     #[test]
     fn parse_wrong_root_is_malformed() {
         let gpx = include_bytes!("../../tests/fixtures/run.gpx");
-        assert_eq!(parse(FileFormat::Tcx, gpx).unwrap_err().code(), "PARSE_ERROR");
+        assert_eq!(
+            parse(FileFormat::Tcx, gpx).unwrap_err().code(),
+            "PARSE_ERROR"
+        );
     }
 }

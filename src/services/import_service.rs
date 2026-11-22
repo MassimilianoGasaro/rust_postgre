@@ -16,7 +16,6 @@
 /// Un supervisore chiude l'import in ogni caso (anche se l'elaborazione va in
 /// panic), con alcuni tentativi: un import non resta mai `processing` finché
 /// il server è attivo.
-
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -29,7 +28,7 @@ use crate::dto::import::ImportDto;
 use crate::errors::AppError;
 use crate::middleware::AuthUser;
 use crate::models::import::ItemStatus;
-use crate::parsing::archive::{expand_upload, ArchiveLimits, Expanded, InputFile};
+use crate::parsing::archive::{ArchiveLimits, Expanded, InputFile, expand_upload};
 use crate::parsing::parse;
 use crate::repositories::{activity_repository, import_repository};
 use crate::storage;
@@ -181,12 +180,18 @@ async fn process_upload(ctx: &ImportContext, file: UploadedFile) {
     }
 
     if let Err(e) = expansion.await {
-        tracing::error!(import_id = ctx.import_id, "espansione dell'upload fallita: {e}");
+        tracing::error!(
+            import_id = ctx.import_id,
+            "espansione dell'upload fallita: {e}"
+        );
         record_failure(ctx, &filename, "INTERNAL").await;
     }
 
     if let Err(e) = path.close() {
-        tracing::warn!(import_id = ctx.import_id, "rimozione file temporaneo fallita: {e}");
+        tracing::warn!(
+            import_id = ctx.import_id,
+            "rimozione file temporaneo fallita: {e}"
+        );
     }
 }
 
@@ -220,7 +225,11 @@ async fn process_item(ctx: &ImportContext, item: Expanded) {
     };
 
     let outcome = import_file(ctx, file).await.unwrap_or_else(|e| {
-        tracing::error!(import_id = ctx.import_id, item_id, "import del file fallito: {e}");
+        tracing::error!(
+            import_id = ctx.import_id,
+            item_id,
+            "import del file fallito: {e}"
+        );
         Outcome::Failed("INTERNAL")
     });
 
@@ -236,7 +245,11 @@ async fn process_item(ctx: &ImportContext, item: Expanded) {
     })
     .await;
     if let Err(e) = finished {
-        tracing::error!(import_id = ctx.import_id, item_id, "aggiornamento item fallito: {e}");
+        tracing::error!(
+            import_id = ctx.import_id,
+            item_id,
+            "aggiornamento item fallito: {e}"
+        );
     }
 }
 
@@ -380,7 +393,9 @@ mod tests {
             .unwrap();
         assert_eq!(import.status, "completed");
         assert!(import.finished_at.is_some());
-        let items = import_repository::list_items(&pool, import.id).await.unwrap();
+        let items = import_repository::list_items(&pool, import.id)
+            .await
+            .unwrap();
         assert_eq!(items[0].status, "failed");
         assert_eq!(items[0].error_code.as_deref(), Some("INTERNAL"));
     }

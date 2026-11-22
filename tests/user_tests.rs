@@ -182,7 +182,12 @@ async fn patch_me_validation_errors_are_400(pool: PgPool) {
         json!({"weight_kg": -3.0}),
     ] {
         let (status, body) = app
-            .request(Method::PATCH, "/api/users/me", Some(&token), Some(bad.clone()))
+            .request(
+                Method::PATCH,
+                "/api/users/me",
+                Some(&token),
+                Some(bad.clone()),
+            )
             .await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{bad}");
         assert_eq!(body["code"], "VALIDATION_FAILED", "{bad}");

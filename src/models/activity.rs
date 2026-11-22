@@ -2,7 +2,6 @@
 ///
 /// Rispecchia la tabella `activities`: una riga per ogni file importato
 /// (FIT, GPX, TCX) con le metriche aggregate calcolate dal parser.
-
 use chrono::{DateTime, Utc};
 
 /// Riga della tabella `activities`.

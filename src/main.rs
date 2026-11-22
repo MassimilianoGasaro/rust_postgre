@@ -8,10 +8,9 @@
 /// 5. Costruire l'AppState condiviso
 /// 6. Costruire il Router (vedi lib.rs → build_router)
 /// 7. Avviare il server TCP in ascolto
-
 use axum_server::tls_rustls::RustlsConfig;
 
-use rust_postgre::{build_router, config, repositories::import_repository, AppState};
+use rust_postgre::{AppState, build_router, config, repositories::import_repository};
 
 #[tokio::main]
 async fn main() {
@@ -145,9 +144,9 @@ fn init_tracing() {
             .with(env_filter)
             .with(
                 tracing_subscriber::fmt::layer()
-                    .with_target(true)    // mostra modulo::funzione
+                    .with_target(true) // mostra modulo::funzione
                     .with_line_number(true) // mostra numero di riga
-                    .pretty()             // output leggibile
+                    .pretty(), // output leggibile
             )
             .init();
 
@@ -171,14 +170,14 @@ fn init_tracing() {
                 // Layer 1: stdout — formato compatto
                 tracing_subscriber::fmt::layer()
                     .with_target(false)
-                    .with_ansi(true)
+                    .with_ansi(true),
             )
             .with(
                 // Layer 2: file — formato JSON (facile da parsare con Loki/ELK)
                 tracing_subscriber::fmt::layer()
-                    .json()               // output JSON strutturato
+                    .json() // output JSON strutturato
                     .with_writer(non_blocking)
-                    .with_ansi(false)     // niente escape codes ANSI nel file
+                    .with_ansi(false), // niente escape codes ANSI nel file
             )
             .init();
 

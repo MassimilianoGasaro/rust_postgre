@@ -2,16 +2,15 @@
 ///
 /// Endpoint protetto da JWT:
 ///   GET /stats/summary → totali, per sport e serie per periodo (proprio o di un atleta collegato)
+use axum::{Json, extract::State};
 
-use axum::{extract::State, Json};
-
+use crate::AppState;
 use crate::dto::stats::{StatsQuery, StatsSummaryDto};
 use crate::errors::AppError;
 use crate::extractors::AppQuery;
 use crate::middleware::AuthUser;
 use crate::repositories::user_repository;
 use crate::services::{access_service, stats_service};
-use crate::AppState;
 
 /// GET /stats/summary?from=&to=&sport=&granularity=&athlete_id=
 pub async fn summary(

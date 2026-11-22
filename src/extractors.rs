@@ -8,13 +8,11 @@
 /// `AppPath<T>` e `AppQuery<T>` fanno lo stesso per i parametri di path e di
 /// query string (es. `/coach-links/abc/accept`, `?status=a&status=b`): il
 /// rifiuto di default di axum è un 400 in testo semplice, non JSON.
-
 use axum::{
-    async_trait,
-    extract::{FromRequest, FromRequestParts, Path, Query, Request},
+    Json, async_trait,
     extract::rejection::JsonRejection,
-    http::{request::Parts, StatusCode},
-    Json,
+    extract::{FromRequest, FromRequestParts, Path, Query, Request},
+    http::{StatusCode, request::Parts},
 };
 use serde::de::DeserializeOwned;
 

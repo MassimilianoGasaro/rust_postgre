@@ -6,7 +6,6 @@
 ///
 /// sqlx verifica le query a COMPILE TIME contro il DB reale
 /// quando usi la macro `sqlx::query_as!` — errori SQL = errori di compilazione.
-
 use axum::http::StatusCode;
 use sqlx::{PgConnection, PgPool};
 
@@ -20,7 +19,11 @@ fn map_unique_violation(e: sqlx::Error) -> AppError {
     if let sqlx::Error::Database(db) = &e {
         match db.constraint() {
             Some("users_email_key") => {
-                return AppError::coded(StatusCode::CONFLICT, "EMAIL_TAKEN", "Email già registrata");
+                return AppError::coded(
+                    StatusCode::CONFLICT,
+                    "EMAIL_TAKEN",
+                    "Email già registrata",
+                );
             }
             Some("users_username_key") => {
                 return AppError::coded(
@@ -50,7 +53,7 @@ pub async fn find_by_email(pool: &PgPool, email: &str) -> Result<Option<User>, A
         email
     )
     .fetch_optional(pool) // fetch_optional → Ok(Some(user)) o Ok(None)
-    .await?;              // ? converte sqlx::Error in AppError grazie a #[from]
+    .await?; // ? converte sqlx::Error in AppError grazie a #[from]
 
     Ok(user)
 }

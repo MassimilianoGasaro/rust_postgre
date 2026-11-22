@@ -5,13 +5,13 @@
 //! `gpxtpx:hr`) sono irrilevanti.
 
 use chrono::{DateTime, Utc};
-use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
+use quick_xml::events::{BytesStart, Event};
 
 use super::metrics::{elevation_gain, haversine_m, moving_seconds};
 use super::{
-    check_depth, finite_number, local_name, parse_time, rounded_mean, ParseError, ParsedActivity,
-    Sport,
+    ParseError, ParsedActivity, Sport, check_depth, finite_number, local_name, parse_time,
+    rounded_mean,
 };
 
 /// Punto di traccia con tempo (i punti senza tempo vengono scartati).
@@ -88,7 +88,11 @@ impl GpxReader {
             }
             return Ok(());
         }
-        let parent = self.stack.len().checked_sub(2).map(|i| self.stack[i].as_str());
+        let parent = self
+            .stack
+            .len()
+            .checked_sub(2)
+            .map(|i| self.stack[i].as_str());
         if parent == Some("trk") && !text.is_empty() {
             match name.as_str() {
                 "name" if self.name.is_none() => self.name = Some(text.to_owned()),
@@ -150,7 +154,9 @@ pub fn parse(bytes: &[u8]) -> Result<ParsedActivity, ParseError> {
             }
             Event::End(_) => state.end(),
             Event::Text(t) => {
-                let text = t.unescape().map_err(|e| ParseError::Malformed(e.to_string()))?;
+                let text = t
+                    .unescape()
+                    .map_err(|e| ParseError::Malformed(e.to_string()))?;
                 state.text(&text)?;
             }
             Event::CData(c) => state.text(&String::from_utf8_lossy(&c))?,
@@ -213,7 +219,11 @@ fn build(state: GpxReader) -> Result<ParsedActivity, ParseError> {
         distance_m: Some(cumulative),
         elevation_gain_m: (!altitudes.is_empty()).then(|| elevation_gain(&altitudes)),
         avg_hr: rounded_mean(&hrs),
-        max_hr: hrs.iter().cloned().reduce(f64::max).map(|h| h.round() as i32),
+        max_hr: hrs
+            .iter()
+            .cloned()
+            .reduce(f64::max)
+            .map(|h| h.round() as i32),
         avg_speed_mps: (moving_s > 0).then(|| cumulative / moving_s as f64),
         avg_power_w: rounded_mean(&powers),
         avg_cadence: rounded_mean(&cads),
@@ -237,7 +247,10 @@ mod tests {
         assert_eq!(a.sport, Sport::Running);
         assert_eq!(a.sport_raw, "running");
         assert_eq!(a.name.as_deref(), Some("Morning Run"));
-        assert_eq!(a.start_time, Utc.with_ymd_and_hms(2026, 1, 10, 7, 0, 0).unwrap());
+        assert_eq!(
+            a.start_time,
+            Utc.with_ymd_and_hms(2026, 1, 10, 7, 0, 0).unwrap()
+        );
         assert_eq!(a.utc_offset_seconds, None);
         assert_eq!(a.elapsed_s, 100);
         assert_eq!(a.moving_s, Some(100));
@@ -257,7 +270,10 @@ mod tests {
     fn parse_ride_same_as_tcx_gpx() {
         let a = parse(&fixture("ride_same_as_tcx.gpx")).unwrap();
         assert_eq!(a.sport, Sport::Cycling);
-        assert_eq!(a.start_time, Utc.with_ymd_and_hms(2026, 1, 10, 8, 0, 30).unwrap());
+        assert_eq!(
+            a.start_time,
+            Utc.with_ymd_and_hms(2026, 1, 10, 8, 0, 30).unwrap()
+        );
         assert_eq!(a.elapsed_s, 240);
         assert_eq!(a.avg_hr, None);
     }
@@ -276,11 +292,21 @@ mod tests {
 
     #[test]
     fn gpx_non_finite_or_out_of_range_coordinates_are_malformed() {
-        for (lat, lon) in [("NaN", "0"), ("inf", "0"), ("91", "0"), ("0", "181"), ("0", "-NaN")] {
+        for (lat, lon) in [
+            ("NaN", "0"),
+            ("inf", "0"),
+            ("91", "0"),
+            ("0", "181"),
+            ("0", "-NaN"),
+        ] {
             let xml = format!(
                 r#"<gpx><trk><trkseg><trkpt lat="{lat}" lon="{lon}"><time>2026-01-10T07:00:00Z</time></trkpt></trkseg></trk></gpx>"#
             );
-            assert_eq!(parse(xml.as_bytes()).unwrap_err().code(), "PARSE_ERROR", "{lat},{lon}");
+            assert_eq!(
+                parse(xml.as_bytes()).unwrap_err().code(),
+                "PARSE_ERROR",
+                "{lat},{lon}"
+            );
         }
     }
 
@@ -305,7 +331,10 @@ mod tests {
     fn truncated_gpx_is_malformed() {
         let full = fixture("run.gpx");
         // Taglio arbitrario (anche in mezzo a un tag)
-        assert_eq!(parse(&full[..full.len() * 2 / 3]).unwrap_err().code(), "PARSE_ERROR");
+        assert_eq!(
+            parse(&full[..full.len() * 2 / 3]).unwrap_err().code(),
+            "PARSE_ERROR"
+        );
         // Taglio pulito subito dopo un elemento chiuso
         let text = String::from_utf8(full).unwrap();
         let end = text.find("</trkpt>").unwrap() + "</trkpt>".len();

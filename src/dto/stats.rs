@@ -1,5 +1,4 @@
 /// dto/stats.rs — DTO delle statistiche
-
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 

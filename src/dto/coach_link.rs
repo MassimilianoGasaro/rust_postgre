@@ -1,7 +1,6 @@
 /// dto/coach_link.rs — DTO per le relazioni allenatore-atleta
 ///
 /// Espongono solo id e username delle parti: mai email né altri dati personali.
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 

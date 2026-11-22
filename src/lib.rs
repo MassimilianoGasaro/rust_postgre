@@ -19,11 +19,11 @@ pub mod storage;
 use std::path::PathBuf;
 
 use axum::{
+    Router,
     extract::DefaultBodyLimit,
-    http::{header, HeaderValue, Method},
+    http::{HeaderValue, Method, header},
     middleware::from_fn_with_state,
     routing::{delete, get, post},
-    Router,
 };
 use sqlx::PgPool;
 use tower_http::cors::CorsLayer;
@@ -108,10 +108,22 @@ pub fn build_router(state: AppState) -> Router {
             "/coach-links",
             get(coach_link_controller::list).post(coach_link_controller::create),
         )
-        .route("/coach-links/:id/accept", post(coach_link_controller::accept))
-        .route("/coach-links/:id/reject", post(coach_link_controller::reject))
-        .route("/coach-links/:id/cancel", post(coach_link_controller::cancel))
-        .route("/coach-links/:id/revoke", post(coach_link_controller::revoke))
+        .route(
+            "/coach-links/:id/accept",
+            post(coach_link_controller::accept),
+        )
+        .route(
+            "/coach-links/:id/reject",
+            post(coach_link_controller::reject),
+        )
+        .route(
+            "/coach-links/:id/cancel",
+            post(coach_link_controller::cancel),
+        )
+        .route(
+            "/coach-links/:id/revoke",
+            post(coach_link_controller::revoke),
+        )
         .route("/athletes", get(coach_link_controller::list_athletes))
         .route_layer(from_fn_with_state(
             state.clone(),
@@ -175,9 +187,7 @@ pub fn build_router(state: AppState) -> Router {
     // ── CORS — solo se è configurata un'origine consentita ─────────────────
     match cors_origin {
         Some(origin) => {
-            let origin: HeaderValue = origin
-                .parse()
-                .expect("CORS_ORIGIN non è un'origine valida");
+            let origin: HeaderValue = origin.parse().expect("CORS_ORIGIN non è un'origine valida");
             router.layer(
                 CorsLayer::new()
                     .allow_origin(origin)

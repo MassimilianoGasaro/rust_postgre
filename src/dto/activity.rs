@@ -1,5 +1,4 @@
 /// dto/activity.rs — DTO delle attività
-
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 

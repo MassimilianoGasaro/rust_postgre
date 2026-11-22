@@ -4,7 +4,7 @@ use std::io::{Cursor, Write};
 
 use axum::http::{Method, StatusCode};
 use rust_postgre::errors::AppError;
-use rust_postgre::parsing::{parse, FileFormat};
+use rust_postgre::parsing::{FileFormat, parse};
 use rust_postgre::repositories::{activity_repository, import_repository};
 use serde_json::Value;
 use sqlx::PgPool;
@@ -18,7 +18,8 @@ const MALFORMED_FIT: &[u8] = include_bytes!("fixtures/malformed.fit");
 
 /// Registra un atleta e ne ritorna `(id, token)`.
 async fn athlete(app: &TestApp) -> (i64, String) {
-    app.register("athlete@example.com", "athlete", "athlete").await
+    app.register("athlete@example.com", "athlete", "athlete")
+        .await
 }
 
 /// Carica i file, verifica il 202 e attende la fine dell'import.
@@ -214,13 +215,20 @@ async fn other_user_cannot_read_import(pool: PgPool) {
     app.wait_import(&token, id).await;
 
     let (status, body) = app
-        .request(Method::GET, &format!("/api/imports/{id}"), Some(&other), None)
+        .request(
+            Method::GET,
+            &format!("/api/imports/{id}"),
+            Some(&other),
+            None,
+        )
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert_eq!(body["code"], "NOT_FOUND");
 
     // Nemmeno nell'elenco dell'altro utente
-    let (status, body) = app.request(Method::GET, "/api/imports", Some(&other), None).await;
+    let (status, body) = app
+        .request(Method::GET, "/api/imports", Some(&other), None)
+        .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body.as_array().unwrap().len(), 0);
 }
@@ -233,7 +241,9 @@ async fn list_imports_returns_latest_without_items(pool: PgPool) {
     let first = import(&app, &token, &[("run.gpx", RUN_GPX.to_vec())]).await;
     let second = import(&app, &token, &[("ride.tcx", RIDE_TCX.to_vec())]).await;
 
-    let (status, body) = app.request(Method::GET, "/api/imports", Some(&token), None).await;
+    let (status, body) = app
+        .request(Method::GET, "/api/imports", Some(&token), None)
+        .await;
     assert_eq!(status, StatusCode::OK, "{body}");
     let list = body.as_array().unwrap();
     assert_eq!(list.len(), 2);
@@ -292,11 +302,13 @@ async fn fail_interrupted_marks_pending(pool: PgPool) {
     .fetch_one(&pool)
     .await
     .unwrap();
-    sqlx::query("INSERT INTO import_items (import_id, filename, status) VALUES ($1, 'a.gpx', 'pending')")
-        .bind(import_id)
-        .execute(&pool)
-        .await
-        .unwrap();
+    sqlx::query(
+        "INSERT INTO import_items (import_id, filename, status) VALUES ($1, 'a.gpx', 'pending')",
+    )
+    .bind(import_id)
+    .execute(&pool)
+    .await
+    .unwrap();
     // Un import già concluso non viene toccato
     let done_id: i64 = sqlx::query_scalar(
         "INSERT INTO imports (user_id, status, finished_at) VALUES ($1, 'completed', NOW()) RETURNING id",
@@ -373,7 +385,10 @@ async fn complete_fails_leftover_pending_items(pool: PgPool) {
     .fetch_all(&pool)
     .await
     .unwrap();
-    assert_eq!(items[0], ("a.gpx".into(), "failed".into(), Some("INTERNAL".into())));
+    assert_eq!(
+        items[0],
+        ("a.gpx".into(), "failed".into(), Some("INTERNAL".into()))
+    );
     assert_eq!(items[1], ("b.gpx".into(), "imported".into(), None));
 }
 
@@ -389,9 +404,10 @@ async fn insert_same_hash_reports_duplicate_file(pool: PgPool) {
         .await
         .unwrap();
 
-    let err = activity_repository::insert(&pool, user_id, &activity, FileFormat::Gpx, "x/a.gpx", &sha)
-        .await
-        .unwrap_err();
+    let err =
+        activity_repository::insert(&pool, user_id, &activity, FileFormat::Gpx, "x/a.gpx", &sha)
+            .await
+            .unwrap_err();
     match err {
         AppError::Coded { status, code, .. } => {
             assert_eq!(status, StatusCode::CONFLICT);
@@ -416,8 +432,14 @@ async fn concurrent_uploads_of_same_activity_insert_once(pool: PgPool) {
     let second = app.wait_import(&token, b2["id"].as_i64().unwrap()).await;
 
     let mut statuses = vec![
-        item(&first, "ride.tcx")["status"].as_str().unwrap().to_string(),
-        item(&second, "ride_same_as_tcx.gpx")["status"].as_str().unwrap().to_string(),
+        item(&first, "ride.tcx")["status"]
+            .as_str()
+            .unwrap()
+            .to_string(),
+        item(&second, "ride_same_as_tcx.gpx")["status"]
+            .as_str()
+            .unwrap()
+            .to_string(),
     ];
     statuses.sort();
     assert_eq!(statuses, ["duplicate", "imported"], "{first} {second}");

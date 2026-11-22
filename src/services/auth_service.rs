@@ -9,10 +9,9 @@
 ///
 /// NON sa nulla di HTTP: non usa Request/Response di Axum.
 /// Riceve tipi semplici (stringhe, struct) e restituisce Result<T, AppError>.
-
 use axum::http::StatusCode;
 use chrono::{Duration, Utc};
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use sqlx::PgPool;
 
 use crate::dto::auth::{AuthResponse, Claims, LoginRequest, RegisterRequest, UserInfo};
@@ -115,14 +114,9 @@ pub async fn register(
 
     // 3. Utente + profilo nella stessa transazione: o entrambi o nessuno
     let mut tx = pool.begin().await?;
-    let user = user_repository::create(
-        &mut tx,
-        &req.email,
-        &req.username,
-        &password_hash,
-        req.role,
-    )
-    .await?;
+    let user =
+        user_repository::create(&mut tx, &req.email, &req.username, &password_hash, req.role)
+            .await?;
     user_repository::create_profile(&mut tx, user.id).await?;
     tx.commit().await?;
 

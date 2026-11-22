@@ -3,9 +3,9 @@
 /// Endpoint protetti da JWT:
 ///   GET    /activities      → elenco paginato con filtri (proprio o di un atleta collegato)
 ///   DELETE /activities/:id  → elimina una propria attività e il file originale (204)
+use axum::{Json, extract::State, http::StatusCode};
 
-use axum::{extract::State, http::StatusCode, Json};
-
+use crate::AppState;
 use crate::dto::activity::{ActivityDto, ActivityPageDto, ListActivitiesQuery};
 use crate::errors::AppError;
 use crate::extractors::{AppPath, AppQuery};
@@ -14,7 +14,6 @@ use crate::parsing::Sport;
 use crate::repositories::{activity_repository, user_repository};
 use crate::services::access_service;
 use crate::storage;
-use crate::AppState;
 
 const DEFAULT_PER_PAGE: i64 = 20;
 const MAX_PER_PAGE: i64 = 100;
@@ -35,7 +34,9 @@ pub async fn list(
         return Err(validation_error("page deve essere almeno 1"));
     }
     if !(1..=MAX_PER_PAGE).contains(&per_page) {
-        return Err(validation_error("per_page deve essere compreso tra 1 e 100"));
+        return Err(validation_error(
+            "per_page deve essere compreso tra 1 e 100",
+        ));
     }
     if let (Some(from), Some(to)) = (query.from, query.to) {
         if from > to {

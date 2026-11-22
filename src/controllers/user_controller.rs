@@ -7,15 +7,14 @@
 ///   GET    /users/me → account + profilo
 ///   PATCH  /users/me → aggiornamento parziale
 ///   DELETE /users/me → eliminazione dell'account
+use axum::{Json, extract::State, http::StatusCode};
 
-use axum::{extract::State, http::StatusCode, Json};
-
+use crate::AppState;
 use crate::dto::user::{MeResponse, UpdateMeRequest};
 use crate::errors::AppError;
 use crate::extractors::AppJson;
 use crate::middleware::AuthUser;
 use crate::services::user_service;
-use crate::AppState;
 
 /// GET /users/me
 ///

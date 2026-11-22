@@ -2,7 +2,6 @@
 ///
 /// Valida i parametri, sceglie la granularità e compone le tre aggregazioni
 /// (totali, per sport, serie per periodo). Non conosce HTTP.
-
 use axum::http::StatusCode;
 use chrono::NaiveDate;
 use sqlx::PgPool;
@@ -79,14 +78,20 @@ fn validation_error(message: &str) -> AppError {
 /// Errori `400 VALIDATION_FAILED`: `from`/`to` mancanti, `from > to`,
 /// intervallo oltre `MAX_RANGE_DAYS`, sport o granularità non validi.
 pub fn validate(query: StatsQuery) -> Result<SummaryRequest, AppError> {
-    let from = query.from.ok_or_else(|| validation_error("from è obbligatorio"))?;
-    let to = query.to.ok_or_else(|| validation_error("to è obbligatorio"))?;
+    let from = query
+        .from
+        .ok_or_else(|| validation_error("from è obbligatorio"))?;
+    let to = query
+        .to
+        .ok_or_else(|| validation_error("to è obbligatorio"))?;
     if from > to {
         return Err(validation_error("from non può essere successivo a to"));
     }
     let days = (to - from).num_days() + 1;
     if days > MAX_RANGE_DAYS {
-        return Err(validation_error("l'intervallo non può superare 3660 giorni"));
+        return Err(validation_error(
+            "l'intervallo non può superare 3660 giorni",
+        ));
     }
     if let Some(sport) = query.sport.as_deref() {
         if Sport::from_str_opt(sport).is_none() {

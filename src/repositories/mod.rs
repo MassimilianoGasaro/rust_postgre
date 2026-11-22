@@ -1,3 +1,7 @@
+pub mod activity_repository;
+pub mod coach_link_repository;
+pub mod import_repository;
+pub mod stats_repository;
 /// repositories/mod.rs — Entry point del layer repository
 ///
 /// I repository sono l'UNICO punto in cui scriviamo query SQL.
@@ -6,9 +10,4 @@
 /// - Se cambi DB, cambi solo i repository
 /// - Facile da testare (puoi mockare il repository)
 /// - Il codice business rimane pulito
-
 pub mod user_repository;
-pub mod coach_link_repository;
-pub mod activity_repository;
-pub mod import_repository;
-pub mod stats_repository;

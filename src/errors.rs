@@ -6,11 +6,10 @@
 /// Grazie all'implementazione di `IntoResponse` di axum, possiamo
 /// restituire questi errori direttamente dagli handler HTTP e axum
 /// li convertirà in risposte JSON con il codice HTTP corretto.
-
 use axum::{
+    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use serde_json::json;
 use thiserror::Error;

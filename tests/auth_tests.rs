@@ -1,7 +1,7 @@
 mod common;
 
 use axum::http::{Method, StatusCode};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sqlx::PgPool;
 
 /// Invia POST /api/auth/register con il body indicato.
@@ -184,7 +184,9 @@ async fn login_ok_returns_role(pool: PgPool) {
 #[sqlx::test]
 async fn login_disabled_account_is_401_account_disabled(pool: PgPool) {
     let app = common::test_app(pool.clone());
-    let (id, _) = app.register("d@example.com", "disabilitato", "athlete").await;
+    let (id, _) = app
+        .register("d@example.com", "disabilitato", "athlete")
+        .await;
     sqlx::query!("UPDATE users SET is_active = FALSE WHERE id = $1", id)
         .execute(&pool)
         .await

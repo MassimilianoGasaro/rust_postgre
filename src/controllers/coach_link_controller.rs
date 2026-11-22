@@ -8,13 +8,9 @@
 ///   POST /coach-links/:id/cancel   → l'atleta annulla una richiesta pending
 ///   POST /coach-links/:id/revoke   → l'atleta revoca un coach attivo
 ///   GET  /athletes                 → gli atleti collegati al coach
+use axum::{Json, extract::State, http::StatusCode};
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    Json,
-};
-
+use crate::AppState;
 use crate::dto::coach_link::{
     CoachLinkDto, CreateCoachLinkRequest, LinkedAthleteDto, ListCoachLinksQuery,
 };
@@ -22,7 +18,6 @@ use crate::errors::AppError;
 use crate::extractors::{AppJson, AppPath, AppQuery};
 use crate::middleware::AuthUser;
 use crate::services::coach_link_service::{self, LinkAction};
-use crate::AppState;
 
 /// POST /coach-links
 ///
