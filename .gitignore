@@ -40,3 +40,7 @@ $RECYCLE.BIN/
 
 # variabili ambiente
 .env
+# variabili ambiente / dati locali
+docs/files/
+uploads/
+.superpowers/
