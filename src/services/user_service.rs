@@ -12,12 +12,13 @@ use std::path::Path;
 use axum::http::StatusCode;
 use sqlx::PgPool;
 
-use crate::dto::user::{MeResponse, ProfileDto, UpdateMeRequest};
+use crate::dto::user::{DeleteMeRequest, MeResponse, ProfileDto, UpdateMeRequest};
 use crate::errors::AppError;
 use crate::models::user::{ProfileUpdate, Role, User};
 use crate::repositories::user_repository;
 use crate::services::auth_service::{
-    hash_password, validate_email, validate_password, validate_username, validation_error,
+    hash_password, invalid_credentials, validate_email, validate_password, validate_username,
+    validation_error, verify_password,
 };
 
 /// Lingue supportate.
@@ -55,6 +56,17 @@ pub async fn get_me(pool: &PgPool, user_id: i64) -> Result<MeResponse, AppError>
     build_me(pool, user_id).await
 }
 
+/// Verifica la password attuale dell'utente: assente → `400 VALIDATION_FAILED`,
+/// errata → `401 INVALID_CREDENTIALS`.
+async fn check_current_password(user: &User, current: Option<String>) -> Result<(), AppError> {
+    let current = current.ok_or_else(|| validation_error("current_password è obbligatoria"))?;
+    if verify_password(current, user.password_hash.clone()).await? {
+        Ok(())
+    } else {
+        Err(invalid_credentials())
+    }
+}
+
 /// Un valore numerico del profilo, se presente, deve essere positivo.
 fn check_positive<T: PartialOrd + Default>(
     field: &str,
@@ -71,7 +83,8 @@ fn check_positive<T: PartialOrd + Default>(
 /// Aggiorna account e profilo dell'utente autenticato (PATCH).
 ///
 /// Flusso:
-/// 1. Valida i campi inviati (senza toccare il DB, tranne il fuso orario)
+/// 1. Valida i campi inviati (senza toccare il DB, tranne il fuso orario);
+///    se cambiano email o password verifica `current_password`
 /// 2. Se la password cambia, la re-hasha
 /// 3. In una transazione aggiorna account e profilo
 ///    (email/username duplicati → 409 dal vincolo UNIQUE)
@@ -81,7 +94,7 @@ pub async fn update_me(
     user_id: i64,
     req: UpdateMeRequest,
 ) -> Result<MeResponse, AppError> {
-    load_user(pool, user_id).await?;
+    let user = load_user(pool, user_id).await?;
 
     // 1. Validazione
     if let Some(email) = &req.email {
@@ -121,6 +134,10 @@ pub async fn update_me(
             "INVALID_TIMEZONE",
             format!("Fuso orario '{timezone}' sconosciuto"),
         ));
+    }
+    // Dopo le validazioni: bcrypt è costoso e un input non valido è comunque 400
+    if req.email.is_some() || req.password.is_some() {
+        check_current_password(&user, req.current_password).await?;
     }
 
     // 2. Re-hash della password, se cambia
@@ -162,11 +179,19 @@ pub async fn update_me(
     build_me(pool, user_id).await
 }
 
-/// Elimina l'account dell'utente autenticato.
+/// Elimina l'account dell'utente autenticato, verificata la password attuale.
 ///
 /// Prima la riga nel DB (profilo e dati collegati vanno in cascata), poi la
 /// cartella `upload_dir/{user_id}` con i suoi file: se non esiste va bene.
-pub async fn delete_me(pool: &PgPool, upload_dir: &Path, user_id: i64) -> Result<(), AppError> {
+pub async fn delete_me(
+    pool: &PgPool,
+    upload_dir: &Path,
+    user_id: i64,
+    req: DeleteMeRequest,
+) -> Result<(), AppError> {
+    let user = load_user(pool, user_id).await?;
+    check_current_password(&user, Some(req.current_password)).await?;
+
     let rows_affected = user_repository::delete(pool, user_id).await?;
     if rows_affected == 0 {
         return Err(AppError::Unauthorized("Utente non trovato".to_string()));

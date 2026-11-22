@@ -69,11 +69,15 @@ where
 /// I campi del profilo che nel DB sono nullable (`Option<Option<T>>`)
 /// possono essere azzerati inviando `null`. Gli altri (email, username,
 /// password, language, timezone) non sono azzerabili: `null` equivale ad assente.
+///
+/// Per cambiare `email` o `password` serve anche `current_password`.
 #[derive(Debug, Deserialize)]
 pub struct UpdateMeRequest {
     pub email: Option<String>,
     pub username: Option<String>,
     pub password: Option<String>,
+    /// Password attuale: obbligatoria se cambiano `email` o `password`
+    pub current_password: Option<String>,
     pub language: Option<String>,
     pub timezone: Option<String>,
     #[serde(default, deserialize_with = "double_option")]
@@ -90,4 +94,10 @@ pub struct UpdateMeRequest {
     pub ftp_watts: Option<Option<i32>>,
     #[serde(default, deserialize_with = "double_option")]
     pub threshold_pace_s_per_km: Option<Option<i32>>,
+}
+
+/// Dati per DELETE `/users/me`: l'eliminazione richiede la password attuale.
+#[derive(Debug, Deserialize)]
+pub struct DeleteMeRequest {
+    pub current_password: String,
 }

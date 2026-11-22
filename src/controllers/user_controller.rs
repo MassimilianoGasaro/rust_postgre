@@ -6,11 +6,11 @@
 /// Endpoint esposti:
 ///   GET    /users/me → account + profilo
 ///   PATCH  /users/me → aggiornamento parziale
-///   DELETE /users/me → eliminazione dell'account
+///   DELETE /users/me → eliminazione dell'account (richiede la password attuale)
 use axum::{Json, extract::State, http::StatusCode};
 
 use crate::AppState;
-use crate::dto::user::{MeResponse, UpdateMeRequest};
+use crate::dto::user::{DeleteMeRequest, MeResponse, UpdateMeRequest};
 use crate::errors::AppError;
 use crate::extractors::AppJson;
 use crate::middleware::AuthUser;
@@ -32,6 +32,7 @@ pub async fn get_me(
 /// Aggiornamento parziale: un campo assente resta invariato, `null` azzera
 /// i campi nullable del profilo.
 /// Esempio: {"weight_kg": 70.5, "max_hr": null}
+/// Per cambiare email o password serve `current_password`.
 pub async fn update_me(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -44,11 +45,13 @@ pub async fn update_me(
 /// DELETE /users/me
 ///
 /// Elimina l'account e i file dell'utente. Restituisce 204 No Content.
+/// Body: {"current_password": "..."}
 pub async fn delete_me(
     State(state): State<AppState>,
     auth: AuthUser,
+    AppJson(req): AppJson<DeleteMeRequest>,
 ) -> Result<StatusCode, AppError> {
-    user_service::delete_me(&state.pool, &state.upload_dir, auth.id).await?;
+    user_service::delete_me(&state.pool, &state.upload_dir, auth.id, req).await?;
 
     // 204 No Content — operazione riuscita, nessun body da restituire
     Ok(StatusCode::NO_CONTENT)

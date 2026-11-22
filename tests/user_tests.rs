@@ -100,7 +100,11 @@ async fn patch_me_updates_account_fields_and_password(pool: PgPool) {
             Method::PATCH,
             "/api/users/me",
             Some(&token),
-            Some(json!({"username": "nuovo.nome", "password": "nuovapassword1"})),
+            Some(json!({
+                "username": "nuovo.nome",
+                "password": "nuovapassword1",
+                "current_password": common::TEST_PASSWORD,
+            })),
         )
         .await;
     assert_eq!(status, StatusCode::OK);
@@ -115,6 +119,67 @@ async fn patch_me_updates_account_fields_and_password(pool: PgPool) {
         )
         .await;
     assert_eq!(status, StatusCode::OK);
+}
+
+/// Cambiare password o email richiede la password attuale.
+#[sqlx::test]
+async fn patch_me_sensitive_fields_require_current_password(pool: PgPool) {
+    let app = common::test_app(pool);
+    let (_, token) = app.register("a@example.com", "atleta", "athlete").await;
+
+    for change in [
+        json!({"password": "nuovapassword1"}),
+        json!({"email": "b@example.com"}),
+    ] {
+        // Assente → 400
+        let (status, body) = app
+            .request(
+                Method::PATCH,
+                "/api/users/me",
+                Some(&token),
+                Some(change.clone()),
+            )
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{change}");
+        assert_eq!(body["code"], "VALIDATION_FAILED", "{change}");
+
+        // Errata → 401
+        let mut wrong = change.clone();
+        wrong["current_password"] = json!("sbagliata123");
+        let (status, body) = app
+            .request(Method::PATCH, "/api/users/me", Some(&token), Some(wrong))
+            .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{change}");
+        assert_eq!(body["code"], "INVALID_CREDENTIALS", "{change}");
+    }
+
+    // Nessuna modifica applicata: email e password sono quelle iniziali
+    let (status, body) = app
+        .request(Method::GET, "/api/users/me", Some(&token), None)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["email"], "a@example.com");
+    let (status, _) = app
+        .request(
+            Method::POST,
+            "/api/auth/login",
+            None,
+            Some(json!({"email": "a@example.com", "password": common::TEST_PASSWORD})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Con la password attuale corretta l'email cambia
+    let (status, body) = app
+        .request(
+            Method::PATCH,
+            "/api/users/me",
+            Some(&token),
+            Some(json!({"email": "b@example.com", "current_password": common::TEST_PASSWORD})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["email"], "b@example.com");
 }
 
 #[sqlx::test]
@@ -219,7 +284,12 @@ async fn delete_me_then_login_fails(pool: PgPool) {
     std::fs::write(user_dir.join("file.fit"), b"dati").unwrap();
 
     let (status, _) = app
-        .request(Method::DELETE, "/api/users/me", Some(&token), None)
+        .request(
+            Method::DELETE,
+            "/api/users/me",
+            Some(&token),
+            Some(json!({"current_password": common::TEST_PASSWORD})),
+        )
         .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
     assert!(!user_dir.exists());
@@ -247,7 +317,44 @@ async fn delete_me_without_upload_dir_is_204(pool: PgPool) {
     let app = common::test_app(pool);
     let (_, token) = app.register("a@example.com", "atleta", "athlete").await;
     let (status, _) = app
-        .request(Method::DELETE, "/api/users/me", Some(&token), None)
+        .request(
+            Method::DELETE,
+            "/api/users/me",
+            Some(&token),
+            Some(json!({"current_password": common::TEST_PASSWORD})),
+        )
         .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
+}
+
+/// L'eliminazione dell'account richiede la password attuale.
+#[sqlx::test]
+async fn delete_me_requires_current_password(pool: PgPool) {
+    let app = common::test_app(pool);
+    let (_, token) = app.register("a@example.com", "atleta", "athlete").await;
+
+    for body in [None, Some(json!({})), Some(json!({"current_password": 5}))] {
+        let (status, resp) = app
+            .request(Method::DELETE, "/api/users/me", Some(&token), body.clone())
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body:?}");
+        assert_eq!(resp["code"], "VALIDATION_FAILED", "{body:?}");
+    }
+
+    let (status, resp) = app
+        .request(
+            Method::DELETE,
+            "/api/users/me",
+            Some(&token),
+            Some(json!({"current_password": "sbagliata123"})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(resp["code"], "INVALID_CREDENTIALS");
+
+    // L'account esiste ancora
+    let (status, _) = app
+        .request(Method::GET, "/api/users/me", Some(&token), None)
+        .await;
+    assert_eq!(status, StatusCode::OK);
 }

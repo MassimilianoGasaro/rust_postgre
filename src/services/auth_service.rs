@@ -69,6 +69,24 @@ pub async fn hash_password(password: String) -> Result<String, AppError> {
         .map_err(AppError::from)
 }
 
+/// Confronta una password con l'hash bcrypt salvato.
+/// bcrypt::verify è CPU-intensive: spawn_blocking evita di bloccare il thread asincrono.
+pub async fn verify_password(password: String, hash: String) -> Result<bool, AppError> {
+    tokio::task::spawn_blocking(move || bcrypt::verify(password, &hash))
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .map_err(AppError::from)
+}
+
+/// Credenziali errate: `401 INVALID_CREDENTIALS`.
+pub fn invalid_credentials() -> AppError {
+    AppError::coded(
+        StatusCode::UNAUTHORIZED,
+        "INVALID_CREDENTIALS",
+        "Credenziali non valide",
+    )
+}
+
 /// Costruisce la risposta di login/registrazione (token + info utente).
 fn auth_response(
     user: User,
@@ -140,13 +158,7 @@ pub async fn login(
     jwt_expiration_hours: i64,
     req: LoginRequest,
 ) -> Result<AuthResponse, AppError> {
-    let invalid = || {
-        AppError::coded(
-            StatusCode::UNAUTHORIZED,
-            "INVALID_CREDENTIALS",
-            "Credenziali non valide",
-        )
-    };
+    let invalid = invalid_credentials;
 
     // 1. Cerca l'utente — stesso errore per email sconosciuta e password errata
     let user = user_repository::find_by_email(pool, &req.email)
@@ -154,13 +166,7 @@ pub async fn login(
         .ok_or_else(invalid)?;
 
     // 2. Verifica password — anche questa è CPU-intensive
-    let password = req.password;
-    let hash = user.password_hash.clone();
-    let password_valid = tokio::task::spawn_blocking(move || bcrypt::verify(password, &hash))
-        .await
-        .map_err(|e| AppError::Internal(e.to_string()))??;
-
-    if !password_valid {
+    if !verify_password(req.password, user.password_hash.clone()).await? {
         return Err(invalid());
     }
 
