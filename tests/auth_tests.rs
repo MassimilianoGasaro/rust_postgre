@@ -227,9 +227,7 @@ async fn deleted_user_token_is_401(pool: PgPool) {
     assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
     assert_eq!(body["code"], "UNAUTHORIZED");
 
-    let (status, body) = app
-        .upload(&token, &[("run.gpx", b"<gpx/>".to_vec())])
-        .await;
+    let (status, body) = app.upload(&token, &[("run.gpx", b"<gpx/>".to_vec())]).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
     assert_eq!(body["code"], "UNAUTHORIZED");
 }

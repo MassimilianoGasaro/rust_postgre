@@ -18,7 +18,9 @@ pub async fn list(
     auth: AuthUser,
     AppQuery(query): AppQuery<ListActivitiesQuery>,
 ) -> Result<Json<ActivityPageDto>, AppError> {
-    Ok(Json(activity_service::list(&state.pool, &auth, query).await?))
+    Ok(Json(
+        activity_service::list(&state.pool, &auth, query).await?,
+    ))
 }
 
 /// DELETE /activities/:id
