@@ -1,0 +1,2 @@
+# Le migration sqlx sono verificate tramite checksum dei byte: forziamo LF ovunque
+*.sql text eol=lf
