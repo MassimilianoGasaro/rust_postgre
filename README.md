@@ -23,9 +23,11 @@ sqlx migrate run
 cargo run
 ```
 
-Le macro `sqlx::query!` verificano le query sul database a compile time: per compilare serve
-un database **attivo e migrato** raggiungibile da `DATABASE_URL` (non c'è modalità offline).
-Dopo ogni nuova migration eseguire `sqlx migrate run` prima di `cargo build` / `cargo test`.
+Le macro `sqlx::query!` verificano le query a compile time. Con `DATABASE_URL` impostato le
+controllano sul database (che deve essere **attivo e migrato**); senza, usano la cache offline
+versionata in `.sqlx/`, quindi il progetto compila anche senza database (es. editor, CI).
+Dopo ogni nuova migration eseguire `sqlx migrate run`; dopo aver aggiunto o modificato una query
+rigenerare la cache con `cargo sqlx prepare -- --all-targets` e committare `.sqlx/`.
 
 Il server ascolta su `https://127.0.0.1:3000` (host e porta da `SERVER_HOST` / `SERVER_PORT`).
 Se `TLS_CERT_PATH` e `TLS_KEY_PATH` sono vuoti viene generato un certificato autofirmato:
