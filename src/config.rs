@@ -13,6 +13,18 @@ fn optional_env(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|v| !v.trim().is_empty())
 }
 
+/// Interpreta un booleano da variabile d'ambiente; assente → `default`.
+fn parse_bool(value: Option<&str>, default: bool) -> Option<bool> {
+    match value.map(|v| v.trim().to_ascii_lowercase()) {
+        None => Some(default),
+        Some(v) => match v.as_str() {
+            "true" | "1" | "yes" => Some(true),
+            "false" | "0" | "no" => Some(false),
+            _ => None,
+        },
+    }
+}
+
 /// Contiene tutta la configurazione dell'app.
 /// Viene creata una sola volta in main() e poi condivisa via Arc<AppState>.
 pub struct Config {
@@ -21,6 +33,9 @@ pub struct Config {
     pub jwt_expiration_hours: i64,
     pub server_host: String,
     pub server_port: u16,
+    /// Se false il server ascolta in HTTP semplice: in produzione il TLS lo termina il proxy
+    /// della piattaforma (es. Render). Default true.
+    pub tls_enabled: bool,
     /// Percorso del certificato TLS (PEM). Se assente, si usa un certificato self-signed.
     pub tls_cert_path: Option<String>,
     /// Percorso della chiave privata TLS (PEM). Se assente, si usa una chiave self-signed.
@@ -53,10 +68,16 @@ impl Config {
 
             server_host: std::env::var("SERVER_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
 
-            server_port: std::env::var("SERVER_PORT")
-                .unwrap_or_else(|_| "3000".to_string())
+            // `PORT` è la variabile impostata dalle piattaforme di hosting (Render): ha la
+            // precedenza su SERVER_PORT
+            server_port: optional_env("PORT")
+                .or_else(|| optional_env("SERVER_PORT"))
+                .unwrap_or_else(|| "3000".to_string())
                 .parse()
-                .expect("SERVER_PORT deve essere un numero"),
+                .expect("PORT / SERVER_PORT deve essere un numero"),
+
+            tls_enabled: parse_bool(optional_env("TLS_ENABLED").as_deref(), true)
+                .expect("TLS_ENABLED deve essere true o false"),
 
             tls_cert_path: optional_env("TLS_CERT_PATH"),
             tls_key_path: optional_env("TLS_KEY_PATH"),
@@ -99,4 +120,22 @@ pub async fn create_db_pool(database_url: &str) -> PgPool {
         .connect(database_url)
         .await
         .expect("Impossibile connettersi al database")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_bool;
+
+    #[test]
+    fn parse_bool_accepts_common_spellings() {
+        assert_eq!(parse_bool(None, true), Some(true));
+        assert_eq!(parse_bool(None, false), Some(false));
+        for v in ["true", "TRUE", " 1 ", "yes"] {
+            assert_eq!(parse_bool(Some(v), false), Some(true), "{v}");
+        }
+        for v in ["false", "False", "0", "no"] {
+            assert_eq!(parse_bool(Some(v), true), Some(false), "{v}");
+        }
+        assert_eq!(parse_bool(Some("forse"), true), None);
+    }
 }
