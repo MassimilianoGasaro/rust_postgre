@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE import_items\n        SET status = $1, error_code = 'IMPORT_INTERRUPTED'\n        WHERE status = $2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0303f3be2164681f01654d0cc094e78fcab3819be6ba76d700948999a4181d41"
+}

@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT language, timezone, birth_date, sex, weight_kg, max_hr,\n               resting_hr, ftp_watts, threshold_pace_s_per_km\n        FROM user_profiles\n        WHERE user_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "language",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "timezone",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "birth_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 3,
+        "name": "sex",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "weight_kg",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 5,
+        "name": "max_hr",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "resting_hr",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "ftp_watts",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "threshold_pace_s_per_km",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "46f441582b263d0939d24347e87e09cc12b8141c9436f0ec3386b394cce73ec5"
+}

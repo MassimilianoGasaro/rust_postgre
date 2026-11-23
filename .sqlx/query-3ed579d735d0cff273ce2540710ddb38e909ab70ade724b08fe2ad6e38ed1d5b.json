@@ -1,0 +1,51 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        WITH periods AS (\n            SELECT generate_series(\n                date_trunc($5::text, $2::date::timestamp),\n                $3::date::timestamp,\n                ('1 ' || $5::text)::interval\n            ) AS period\n        ),\n        agg AS (\n            SELECT date_trunc($5::text, start_time AT TIME ZONE $4) AS period,\n                   COUNT(*)                                         AS count,\n                   SUM(distance_m)                                  AS distance_m,\n                   SUM(COALESCE(moving_s, elapsed_s))               AS moving_s,\n                   SUM(elevation_gain_m)                            AS elevation_gain_m\n            FROM activities\n            WHERE user_id = $1\n              AND (start_time AT TIME ZONE $4)::date >= $2\n              AND (start_time AT TIME ZONE $4)::date <= $3\n              AND ($6::text IS NULL OR sport = $6)\n            GROUP BY 1\n        )\n        SELECT periods.period::date                      AS \"period_start!\",\n               COALESCE(agg.count, 0)                    AS \"count!\",\n               COALESCE(agg.distance_m, 0)::float8       AS \"distance_m!\",\n               COALESCE(agg.moving_s, 0)::int8           AS \"moving_s!\",\n               COALESCE(agg.elevation_gain_m, 0)::float8 AS \"elevation_gain_m!\"\n        FROM periods\n        LEFT JOIN agg ON agg.period = periods.period\n        ORDER BY periods.period\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "period_start!",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 1,
+        "name": "count!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "distance_m!",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 3,
+        "name": "moving_s!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "elevation_gain_m!",
+        "type_info": "Float8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Date",
+        "Date",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "3ed579d735d0cff273ce2540710ddb38e909ab70ade724b08fe2ad6e38ed1d5b"
+}

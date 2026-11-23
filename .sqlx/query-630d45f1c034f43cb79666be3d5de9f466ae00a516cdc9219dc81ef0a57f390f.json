@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT cl.id, cl.athlete_id, a.username AS athlete_username,\n               cl.coach_id, c.username AS coach_username,\n               cl.status, cl.requested_at, cl.responded_at, cl.ended_at\n        FROM coach_links cl\n        JOIN users a ON a.id = cl.athlete_id\n        JOIN users c ON c.id = cl.coach_id\n        WHERE cl.id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "athlete_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "athlete_username",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "coach_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "coach_username",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "requested_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "responded_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "ended_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "630d45f1c034f43cb79666be3d5de9f466ae00a516cdc9219dc81ef0a57f390f"
+}

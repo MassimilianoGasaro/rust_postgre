@@ -1,0 +1,154 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, user_id, source, sport, sport_raw, name, start_time,\n               utc_offset_seconds, elapsed_s, moving_s, distance_m,\n               elevation_gain_m, avg_hr, max_hr, avg_speed_mps, avg_power_w,\n               avg_cadence, calories, file_format, file_path, file_sha256, created_at\n        FROM activities\n        WHERE user_id = $1\n          AND ($2::date IS NULL OR (start_time AT TIME ZONE $4)::date >= $2)\n          AND ($3::date IS NULL OR (start_time AT TIME ZONE $4)::date <= $3)\n          AND ($5::text IS NULL OR sport = $5)\n        ORDER BY start_time DESC, id DESC\n        LIMIT $6 OFFSET $7\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "source",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "sport",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "sport_raw",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "start_time",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "utc_offset_seconds",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "elapsed_s",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 9,
+        "name": "moving_s",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 10,
+        "name": "distance_m",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 11,
+        "name": "elevation_gain_m",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 12,
+        "name": "avg_hr",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 13,
+        "name": "max_hr",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 14,
+        "name": "avg_speed_mps",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 15,
+        "name": "avg_power_w",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 16,
+        "name": "avg_cadence",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 17,
+        "name": "calories",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 18,
+        "name": "file_format",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 19,
+        "name": "file_path",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 20,
+        "name": "file_sha256",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 21,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Date",
+        "Date",
+        "Text",
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "5f2ad1c9f32b5feeb41369e3de37d4c2ce0abd4bac94fb7d2fabb5ddff523953"
+}

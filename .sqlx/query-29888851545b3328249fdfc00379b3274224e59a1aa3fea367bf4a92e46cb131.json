@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE user_profiles\n        SET\n            language                = COALESCE($2, language),\n            timezone                = COALESCE($3, timezone),\n            birth_date              = CASE WHEN $4 THEN $5::date ELSE birth_date END,\n            sex                     = CASE WHEN $6 THEN $7::text ELSE sex END,\n            weight_kg               = CASE WHEN $8 THEN $9::float8 ELSE weight_kg END,\n            max_hr                  = CASE WHEN $10 THEN $11::int4 ELSE max_hr END,\n            resting_hr              = CASE WHEN $12 THEN $13::int4 ELSE resting_hr END,\n            ftp_watts               = CASE WHEN $14 THEN $15::int4 ELSE ftp_watts END,\n            threshold_pace_s_per_km = CASE WHEN $16 THEN $17::int4 ELSE threshold_pace_s_per_km END\n        WHERE user_id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text",
+        "Text",
+        "Bool",
+        "Date",
+        "Bool",
+        "Text",
+        "Bool",
+        "Float8",
+        "Bool",
+        "Int4",
+        "Bool",
+        "Int4",
+        "Bool",
+        "Int4",
+        "Bool",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "29888851545b3328249fdfc00379b3274224e59a1aa3fea367bf4a92e46cb131"
+}

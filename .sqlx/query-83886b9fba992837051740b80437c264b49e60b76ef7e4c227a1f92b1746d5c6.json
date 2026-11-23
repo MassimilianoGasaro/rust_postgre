@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE coach_links\n        SET status       = $3,\n            responded_at = CASE WHEN $4 THEN NOW() ELSE responded_at END,\n            ended_at     = CASE WHEN $4 THEN ended_at ELSE NOW() END\n        WHERE id = $1 AND status = $2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text",
+        "Text",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "83886b9fba992837051740b80437c264b49e60b76ef7e4c227a1f92b1746d5c6"
+}

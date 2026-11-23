@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE imports\n        SET status = $1, finished_at = NOW()\n        WHERE status = $2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6d4047c80b7c34f610685493bc3a0121ca95e1a05e94416d4dd8c78e5cc82451"
+}

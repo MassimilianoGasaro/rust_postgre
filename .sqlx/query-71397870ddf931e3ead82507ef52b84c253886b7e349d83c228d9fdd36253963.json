@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT a.id, a.username,\n               COALESCE(cl.responded_at, cl.requested_at) AS \"linked_since!\"\n        FROM coach_links cl\n        JOIN users a ON a.id = cl.athlete_id\n        WHERE cl.coach_id = $1 AND cl.status = 'active'\n        ORDER BY a.username\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "username",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "linked_since!",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "71397870ddf931e3ead82507ef52b84c253886b7e349d83c228d9fdd36253963"
+}

@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT COUNT(*) AS \"total!\"\n        FROM activities\n        WHERE user_id = $1\n          AND ($2::date IS NULL OR (start_time AT TIME ZONE $4)::date >= $2)\n          AND ($3::date IS NULL OR (start_time AT TIME ZONE $4)::date <= $3)\n          AND ($5::text IS NULL OR sport = $5)\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "total!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Date",
+        "Date",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "314201e71743dcc6a970b2134a6835d4efab7247c0eb27f9dc6701fc61709859"
+}

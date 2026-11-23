@@ -1,0 +1,44 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT sport                                                 AS \"sport!\",\n               COUNT(*)                                              AS \"count!\",\n               COALESCE(SUM(distance_m), 0)::float8                  AS \"distance_m!\",\n               COALESCE(SUM(COALESCE(moving_s, elapsed_s)), 0)::int8 AS \"moving_s!\"\n        FROM activities\n        WHERE user_id = $1\n          AND (start_time AT TIME ZONE $4)::date >= $2\n          AND (start_time AT TIME ZONE $4)::date <= $3\n          AND ($5::text IS NULL OR sport = $5)\n        GROUP BY sport\n        ORDER BY 4 DESC, sport\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "sport!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "count!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "distance_m!",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 3,
+        "name": "moving_s!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Date",
+        "Date",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "053dd72ffe20b968feaff80adaea5eb02dc79c48b06451356a1ec08d541f8ff4"
+}

@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE import_items\n        SET status = $2, error_code = 'INTERNAL'\n        WHERE import_id = $1 AND status = $3\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "78834ec16ad5388760a789bfe7eab4fa6dc2e27d96be5410d8ce1994599f2fc5"
+}

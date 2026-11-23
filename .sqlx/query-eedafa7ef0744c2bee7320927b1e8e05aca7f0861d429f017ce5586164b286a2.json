@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE import_items\n        SET status = $2, activity_id = $3, error_code = $4\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text",
+        "Int8",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "eedafa7ef0744c2bee7320927b1e8e05aca7f0861d429f017ce5586164b286a2"
+}

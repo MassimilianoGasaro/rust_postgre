@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id FROM activities\n        WHERE user_id = $1\n          AND (sport = $2 OR sport = 'other' OR $2 = 'other')\n          AND start_time BETWEEN $3 AND $4\n        ORDER BY ABS(EXTRACT(EPOCH FROM start_time - $5)), id\n        LIMIT 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "0b33a5a761884168288907a298c6400b9fa08f4a089f66c3e3213ad6a089a461"
+}

@@ -1,0 +1,72 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT cl.id, cl.athlete_id, a.username AS athlete_username,\n               cl.coach_id, c.username AS coach_username,\n               cl.status, cl.requested_at, cl.responded_at, cl.ended_at\n        FROM coach_links cl\n        JOIN users a ON a.id = cl.athlete_id\n        JOIN users c ON c.id = cl.coach_id\n        WHERE (CASE WHEN $2 THEN cl.coach_id ELSE cl.athlete_id END) = $1\n          AND ($3::text IS NULL OR cl.status = $3)\n        ORDER BY cl.requested_at DESC, cl.id DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "athlete_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "athlete_username",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "coach_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "coach_username",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "requested_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "responded_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "ended_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Bool",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "bd11964d6312cd07abbf214254309b73fdbd2048b320c3ab5c66eb67d48ada89"
+}
