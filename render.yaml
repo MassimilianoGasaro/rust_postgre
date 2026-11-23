@@ -1,0 +1,27 @@
+# Blueprint Render: servizio web del backend (piano gratuito, immagine dal Dockerfile).
+# Il database è esterno (es. Neon): DATABASE_URL e CORS_ORIGIN si inseriscono nella dashboard.
+services:
+  - type: web
+    name: rust-postgre-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: main
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    # Deploy automatico solo quando la CI di GitHub sul commit è verde
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRATION_HOURS
+        value: "24"
+      # Disco effimero e 512 MB di RAM sul piano gratuito: limiti di upload più bassi
+      - key: MAX_UPLOAD_BYTES
+        value: "268435456"
+      - key: MAX_CONCURRENT_IMPORTS
+        value: "1"
