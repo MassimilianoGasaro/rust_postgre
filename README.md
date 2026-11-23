@@ -185,3 +185,8 @@ curl -k -X POST https://127.0.0.1:3000/api/imports \
 curl -k "https://127.0.0.1:3000/api/stats/summary?from=2026-01-01&to=2026-12-31" \
   -H "Authorization: Bearer <token>"
 ```
+
+## Contribuire e licenza
+
+Come contribuire (branch, commit, controlli prima della PR) è descritto in
+[CONTRIBUTING.md](CONTRIBUTING.md). Il progetto è distribuito con licenza [MIT](LICENSE).
