@@ -51,6 +51,8 @@ istanza** del server sullo stesso database e sulla stessa cartella di upload.
 | `JWT_SECRET` | Segreto di firma dei token (almeno 32 caratteri) |
 | `JWT_EXPIRATION_HOURS` | Durata del token in ore |
 | `SERVER_HOST`, `SERVER_PORT` | Indirizzo di ascolto |
+| `PORT` | Porta impostata dalla piattaforma di hosting (Render); se presente ha la precedenza su `SERVER_PORT` |
+| `TLS_ENABLED` | `false` = HTTP semplice, quando il TLS lo termina un proxy (default `true`) |
 | `CORS_ORIGIN` | Origine ammessa dal CORS |
 | `UPLOAD_DIR` | Cartella dei file importati |
 | `MAX_UPLOAD_BYTES` | Dimensione massima del corpo multipart (default 1 GiB) |
@@ -80,6 +82,49 @@ Controlli di qualità:
 ```
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
+```
+
+## Deploy (Render + Neon)
+
+Il backend gira su [Render](https://render.com) (piano gratuito) come immagine Docker
+(`Dockerfile`); il database è un PostgreSQL gestito su [Neon](https://neon.tech) (piano gratuito).
+Il servizio è descritto in `render.yaml`: deploy dal branch `main`, solo quando la CI del commit
+è verde (`autoDeployTrigger: checksPass`), health check su `/api/health`.
+
+Nel container il server ascolta in HTTP (`TLS_ENABLED=false`, `SERVER_HOST=0.0.0.0`) sulla porta
+`PORT` assegnata da Render: l'HTTPS pubblico lo gestisce Render. Le migration vengono applicate
+all'avvio.
+
+Configurazione una tantum:
+
+1. Su Neon crea un progetto (regione Europa, es. Frankfurt) e copia la connection string,
+   nella forma `postgres://...?sslmode=require`.
+2. Su Render: **New → Blueprint**, collega il repository e conferma il servizio
+   `rust-postgre-api` letto da `render.yaml`. Alla richiesta inserisci:
+   - `DATABASE_URL`: la connection string di Neon;
+   - `CORS_ORIGIN`: l'indirizzo del client su Cloudflare Pages
+     (es. `https://rust-postgre-client.pages.dev`, senza `/` finale).
+
+   `JWT_SECRET` viene generato da Render.
+3. L'indirizzo pubblico sarà `https://rust-postgre-api.onrender.com` (o simile, se il nome è
+   occupato): deve coincidere con `apiBaseUrl` in `environment.prod.ts` del client.
+
+Limiti del piano gratuito da tenere presenti:
+
+- il servizio si sospende dopo circa 15 minuti senza richieste: la prima richiesta successiva
+  impiega fino a un minuto; un import in corso viene interrotto e alla ripartenza chiuso come
+  `failed` (`IMPORT_INTERRUPTED`);
+- il disco è effimero: i file originali caricati in `UPLOAD_DIR` si perdono a ogni deploy o
+  riavvio. Oggi vengono solo archiviati (le attività sono nel database), quindi non ci sono
+  effetti visibili; per conservarli servirà uno storage esterno (es. Cloudflare R2);
+- 512 MB di RAM: `render.yaml` riduce `MAX_UPLOAD_BYTES` a 256 MiB e gli import paralleli a 1.
+
+Per provare l'immagine in locale (con il Postgres di `docker compose`):
+
+```
+docker build -t rust-postgre-api .
+docker run --rm -p 8080:8080 -e DATABASE_URL=postgres://myuser:mypassword@host.docker.internal:5432/myapp -e JWT_SECRET=<almeno 32 caratteri> rust-postgre-api
+curl http://localhost:8080/api/health
 ```
 
 ## API

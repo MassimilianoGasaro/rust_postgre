@@ -65,7 +65,12 @@ async fn main() {
         .server_address()
         .parse()
         .expect("Indirizzo server non valido");
-    let tls_config = build_tls_config(&config).await;
+    // Il TLS si configura solo se serve: con TLS_ENABLED=false lo termina il proxy
+    let tls_config = if config.tls_enabled {
+        Some(build_tls_config(&config).await)
+    } else {
+        None
+    };
 
     // 5. Costruisce l'AppState condiviso
     let state = AppState {
@@ -82,14 +87,27 @@ async fn main() {
     // 6. Costruisce il Router
     let app = build_router(state);
 
-    // 7. Avvia il server HTTPS
-
-    tracing::info!("Server HTTPS in ascolto su https://{}", address);
-
-    axum_server::bind_rustls(address, tls_config)
-        .serve(app.into_make_service())
-        .await
-        .expect("Errore nel server");
+    // 7. Avvia il server (HTTPS, oppure HTTP dietro al proxy TLS della piattaforma)
+    let service = app.into_make_service();
+    match tls_config {
+        Some(tls) => {
+            tracing::info!("Server HTTPS in ascolto su https://{}", address);
+            axum_server::bind_rustls(address, tls)
+                .serve(service)
+                .await
+                .expect("Errore nel server");
+        }
+        None => {
+            tracing::info!(
+                "Server HTTP in ascolto su http://{} (TLS disattivato)",
+                address
+            );
+            axum_server::bind(address)
+                .serve(service)
+                .await
+                .expect("Errore nel server");
+        }
+    }
 }
 
 /// Costruisce la configurazione TLS.

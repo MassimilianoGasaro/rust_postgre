@@ -1,0 +1,11 @@
+# Solo ciò che serve alla build (vedi Dockerfile)
+target/
+uploads/
+logs/
+docs/
+tests/
+.env
+.git/
+.github/
+.superpowers/
+.vscode/
