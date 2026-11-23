@@ -1,0 +1,58 @@
+# CI del backend: formattazione, lint e test su ogni push e Pull Request verso main/develop.
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: backend
+    runs-on: ubuntu-latest
+
+    # Postgres di servizio: i test #[sqlx::test] creano qui i loro database temporanei.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: myuser
+          POSTGRES_PASSWORD: mypassword
+          POSTGRES_DB: myapp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U myuser"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Le macro sqlx usano la cache .sqlx/ (il DB di servizio è vuoto in fase di compilazione).
+      SQLX_OFFLINE: "true"
+      # Usato a runtime dai test per creare i database temporanei.
+      DATABASE_URL: postgres://myuser:mypassword@localhost:5432/myapp
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Formattazione
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test
