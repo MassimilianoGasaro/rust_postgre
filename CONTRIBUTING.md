@@ -25,6 +25,9 @@ Il repository è privato: per contribuire serve un invito come collaboratore.
 `main` e `develop` sono protetti: non si fa push diretto, si passa sempre da una Pull Request con
 la CI verde.
 
+I rilasci (cambio di versione, tag, Release) seguono la procedura in
+[RELEASING.md](RELEASING.md).
+
 ## Flusso di lavoro
 
 ```
