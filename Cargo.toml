@@ -8,7 +8,10 @@ license = "MIT"
 [dependencies]
 # Web framework
 axum = { version = "0.7", features = ["macros", "multipart"] }
-axum-server = { version = "0.7", features = ["tls-rustls"] }
+# Senza provider crittografico proprio: rustls usa ring, già richiesto da sqlx, jsonwebtoken e
+# rcgen. Con "tls-rustls" entrerebbe anche aws-lc-rs e, con due provider, il server HTTPS va
+# in panic all'avvio (vedi tests/tls_tests.rs).
+axum-server = { version = "0.7", features = ["tls-rustls-no-provider"] }
 
 # Generazione certificati self-signed (solo sviluppo)
 rcgen = "0.13"
