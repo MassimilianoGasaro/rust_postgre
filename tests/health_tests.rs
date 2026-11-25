@@ -9,7 +9,11 @@ async fn health_returns_ok(pool: PgPool) {
     let app = common::test_app(pool);
     let (status, body) = app.request(Method::GET, "/api/health", None, None).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(body, json!({"status": "ok"}));
+    // La versione permette al client di verificare la compatibilità con l'API.
+    assert_eq!(
+        body,
+        json!({"status": "ok", "version": env!("CARGO_PKG_VERSION")})
+    );
 }
 
 /// Una route inesistente risponde 404 nel formato d'errore JSON.
