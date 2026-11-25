@@ -134,7 +134,7 @@ Tutte le route sono sotto il prefisso `/api`. Le route protette richiedono l'hea
 
 | Metodo | Percorso | Ruolo | Descrizione |
 |---|---|---|---|
-| GET | `/api/health` | pubblica | Verifica che il servizio sia attivo |
+| GET | `/api/health` | pubblica | Verifica che il servizio sia attivo; restituisce anche la versione dell'API (`{"status":"ok","version":"X.Y.Z"}`) |
 | POST | `/api/auth/register` | pubblica | Registra un account (`athlete` o `coach`) e restituisce il JWT |
 | POST | `/api/auth/login` | pubblica | Autentica con email e password e restituisce il JWT |
 | GET | `/api/users/me` | atleta, coach | Account e profilo dell'utente autenticato |

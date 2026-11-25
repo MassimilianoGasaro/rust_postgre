@@ -7,7 +7,8 @@ use serde_json::{Value, json};
 
 /// GET /api/health
 ///
-/// Restituisce 200 OK con `{"status": "ok"}`.
+/// Restituisce 200 OK con `{"status": "ok", "version": "X.Y.Z"}`: la versione è quella di
+/// `Cargo.toml`, così il client può verificare di parlare con un'API abbastanza recente.
 pub async fn health() -> Json<Value> {
-    Json(json!({"status": "ok"}))
+    Json(json!({"status": "ok", "version": env!("CARGO_PKG_VERSION")}))
 }

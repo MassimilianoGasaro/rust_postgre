@@ -43,6 +43,25 @@ git log --oneline v0.1.0..develop
 `git describe` restituisce l'ultima versione rilasciata: usala al posto di `v0.1.0` nel comando
 successivo, che elenca i commit non ancora rilasciati.
 
+### Compatibilità con il client
+
+Il client dipende dall'API: la versione minima dell'API richiesta da ogni versione del client è
+nella tabella "Compatibilità con l'API" del README del client. Prima di rilasciare, controlla:
+
+- **solo aggiunte** (nuovi endpoint, nuovi campi nelle risposte, parametri opzionali): i client
+  già pubblicati continuano a funzionare, nessuna azione;
+- **modifiche incompatibili** (campo rimosso o rinominato, unità o formato cambiati, endpoint
+  eliminato): i client già pubblicati smettono di funzionare. Conviene procedere in due passi:
+  l'API supporta per un periodo sia il formato vecchio sia il nuovo, il client passa al nuovo, e
+  il formato vecchio si toglie in un rilascio successivo. Se non è possibile, scrivilo nella
+  Release (punto 5), ad esempio: "Non compatibile con client < v0.3.0".
+
+**Ordine dei rilasci:** quando una versione del client richiede una nuova versione dell'API,
+rilascia **prima l'API** e poi il client, così il client nuovo trova già pubblicato ciò che usa.
+
+`GET /api/health` restituisce la versione pubblicata (`"version": "X.Y.Z"`), utile per
+verificare cosa è online.
+
 ## 2. Aggiorna la versione nel progetto
 
 La versione in `Cargo.toml` deve coincidere con il tag.
@@ -93,7 +112,7 @@ Render pubblica la nuova versione da solo. Verifica:
   curl https://rust-postgre-api.onrender.com/api/health
   ```
 
-  Risposta attesa: `{"status":"ok"}`. Dopo un periodo di inattività la prima risposta può
+  Risposta attesa: `{"status":"ok","version":"X.Y.Z"}`, con la versione appena rilasciata. Dopo un periodo di inattività la prima risposta può
   richiedere fino a un minuto.
 
 Se il deploy fallisce, la versione precedente resta online: correggi con un `fix` (dal punto 2)
@@ -126,7 +145,13 @@ Nel repository: **Releases → Draft a new release**.
 
 1. **Choose a tag**: `vX.Y.Z`.
 2. **Generate release notes**: GitHub elenca le Pull Request incluse.
-3. Rileggi le note, aggiungi in cima un riassunto se serve, poi **Publish release**.
+3. Rileggi le note, aggiungi in cima un riassunto se serve, poi **Publish release**. Se il
+   rilascio non è compatibile con i client già pubblicati, aggiungi una sezione:
+
+   ```markdown
+   ## Attenzione
+   - Non compatibile con client < vA.B.C: <cosa è cambiato>.
+   ```
 
 ## 6. Riallinea `develop`
 
@@ -188,7 +213,7 @@ git switch -c hotfix/descrizione-breve
 
 ## Checklist
 
-- [ ] Numero di versione scelto (punto 1)
+- [ ] Numero di versione scelto e compatibilità con il client verificata (punto 1)
 - [ ] `Cargo.toml` e `Cargo.lock` aggiornati, PR `release/vX.Y.Z → develop` unita
 - [ ] PR `develop → main` unita, deploy su Render **Live**, `/api/health` risponde
 - [ ] Tag `vX.Y.Z` creato su `main` e pushato
